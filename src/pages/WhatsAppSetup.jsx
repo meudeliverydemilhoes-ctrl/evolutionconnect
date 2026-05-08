@@ -3,12 +3,13 @@ import { Badge } from "@/components/ui/badge";
 import { CheckCircle, AlertCircle, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
+import { appParams } from "@/lib/app-params";
 
 export default function WhatsAppSetup() {
   const { toast } = useToast();
 
-  // URL correta baseada no domínio atual do app
-  const appId = window.location.hostname.split(".")[0];
+  // App ID correto vindo do SDK
+  const appId = appParams.appId;
   const webhookUrl = `https://api.base44.com/api/apps/${appId}/functions/whatsappWebhook`;
 
   const copyUrl = () => {
