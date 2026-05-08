@@ -20,28 +20,17 @@ async function sendWhatsAppMessage(phone, message) {
   return res.json();
 }
 
-async function getAIResponse(userMessage, contactName) {
-  const EVOLUTION_API_URL_BASE = Deno.env.get("EVOLUTION_API_URL");
-  // Use Base44 LLM for AI responses
-  const appId = Deno.env.get("BASE44_APP_ID");
-  const res = await fetch(`https://api.base44.com/api/apps/${appId}/integrations/Core/InvokeLLM`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": Deno.env.get("BASE44_SERVICE_TOKEN") || "",
-    },
-    body: JSON.stringify({
-      prompt: `Você é um assistente de suporte ao cliente prestativo e amigável. O cliente se chama "${contactName || "cliente"}".
-      
-Responda a seguinte mensagem do cliente de forma clara, educada e concisa em português:
+async function getAIResponse(base44ServiceRole, userMessage, contactName) {
+  const result = await base44ServiceRole.integrations.Core.InvokeLLM({
+    prompt: `Você é um assistente de suporte ao cliente prestativo e amigável de uma loja de delivery chamada "meudelivery". O cliente se chama "${contactName || "cliente"}".
+
+Responda a seguinte mensagem do cliente de forma clara, educada e concisa em português brasileiro:
 
 Mensagem do cliente: "${userMessage}"
 
-Responda como um agente de suporte ao cliente, seja prestativo e ofereça ajuda. Se não souber a resposta exata, diga que vai verificar e que alguém entrará em contato em breve.`,
-    }),
+Seja prestativo, amigável e use emojis com moderação. Se não souber a resposta exata, diga que vai verificar e que alguém entrará em contato em breve.`,
   });
-  const data = await res.json();
-  return data.result || "Olá! Recebi sua mensagem e em breve um de nossos atendentes entrará em contato. 😊";
+  return result || "Olá! Recebi sua mensagem e em breve um de nossos atendentes entrará em contato. 😊";
 }
 
 Deno.serve(async (req) => {
@@ -108,7 +97,7 @@ Deno.serve(async (req) => {
     }
 
     // Get AI response
-    const aiResponse = await getAIResponse(messageText, contact.name || pushName);
+    const aiResponse = await getAIResponse(base44.asServiceRole, messageText, contact.name || pushName);
 
     // Send reply via WhatsApp
     await sendWhatsAppMessage(phone, aiResponse);

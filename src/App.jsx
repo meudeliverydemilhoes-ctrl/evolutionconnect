@@ -6,7 +6,9 @@ import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 // Add page imports here
-import WhatsAppDashboard from "./pages/WhatsAppDashboard";
+import Contacts from "./pages/Contacts";
+import Orders from "./pages/Orders";
+import WhatsAppSetup from "./pages/WhatsAppSetup";
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -35,7 +37,10 @@ const AuthenticatedApp = () => {
   return (
     <Routes>
       {/* Add your page Route elements here */}
-      <Route path="/" element={<WhatsAppDashboard />} />
+      <Route path="/" element={<Contacts />} />
+      <Route path="/contacts" element={<Contacts />} />
+      <Route path="/orders" element={<Orders />} />
+      <Route path="/whatsapp-setup" element={<WhatsAppSetup />} />
       <Route path="*" element={<PageNotFound />} />
     </Routes>
   );
