@@ -32,6 +32,15 @@ Deno.serve(async (req) => {
     });
 
     const data = await res.json();
+
+    // Salvar mensagem enviada no histórico
+    await base44.asServiceRole.entities.Message.create({
+      contact_phone: phone,
+      text: message,
+      direction: "sent",
+      timestamp: new Date().toISOString(),
+    });
+
     return Response.json({ status: "ok", result: data });
   } catch (error) {
     console.error("Erro ao enviar mensagem:", error);

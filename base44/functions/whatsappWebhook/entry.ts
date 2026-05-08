@@ -44,11 +44,9 @@ Deno.serve(async (req) => {
     const body = await req.json();
     console.log("Webhook recebido:", JSON.stringify(body));
 
-    // Evolution API webhook format
     const event = body?.event;
     const data = body?.data;
 
-    // Only process incoming messages
     if (event !== "messages.upsert" || !data) {
       return Response.json({ status: "ignored" });
     }
@@ -56,7 +54,7 @@ Deno.serve(async (req) => {
     const message = data?.message;
     const key = data?.key;
 
-    // Ignore messages sent by us
+    // Ignorar mensagens enviadas por nós
     if (key?.fromMe) {
       return Response.json({ status: "ignored - own message" });
     }
@@ -72,20 +70,26 @@ Deno.serve(async (req) => {
 
     console.log(`Mensagem de ${phone} (${pushName}): ${messageText}`);
 
-    // Find or create contact
+    // Salvar mensagem recebida no histórico
+    await base44.asServiceRole.entities.Message.create({
+      contact_phone: phone,
+      text: messageText,
+      direction: "received",
+      timestamp: new Date().toISOString(),
+    });
+
+    // Encontrar ou criar contato
     const contacts = await base44.asServiceRole.entities.Contact.filter({ phone });
     let contact;
 
     if (contacts && contacts.length > 0) {
       contact = contacts[0];
-      // Update last message and date
       await base44.asServiceRole.entities.Contact.update(contact.id, {
         last_message: messageText,
         last_contact_date: new Date().toISOString(),
         name: contact.name || pushName,
       });
     } else {
-      // Create new contact
       contact = await base44.asServiceRole.entities.Contact.create({
         phone,
         name: pushName,
@@ -96,11 +100,20 @@ Deno.serve(async (req) => {
       console.log("Novo contato criado:", contact.id);
     }
 
-    // Get AI response
+    // Gerar resposta de IA
     const aiResponse = await getAIResponse(base44.asServiceRole, messageText, contact.name || pushName);
 
-    // Send reply via WhatsApp
+    // Enviar resposta
     await sendWhatsAppMessage(phone, aiResponse);
+
+    // Salvar resposta da IA no histórico
+    await base44.asServiceRole.entities.Message.create({
+      contact_phone: phone,
+      text: aiResponse,
+      direction: "sent",
+      timestamp: new Date().toISOString(),
+    });
+
     console.log(`Resposta enviada para ${phone}: ${aiResponse}`);
 
     return Response.json({ status: "ok", contact_id: contact.id });

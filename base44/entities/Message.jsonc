@@ -1,0 +1,32 @@
+{
+  "name": "Message",
+  "type": "object",
+  "properties": {
+    "contact_phone": {
+      "type": "string",
+      "description": "Telefone do contato"
+    },
+    "text": {
+      "type": "string",
+      "description": "Texto da mensagem"
+    },
+    "direction": {
+      "type": "string",
+      "enum": [
+        "sent",
+        "received"
+      ],
+      "description": "Enviada ou recebida"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Hor\u00e1rio da mensagem"
+    }
+  },
+  "required": [
+    "contact_phone",
+    "text",
+    "direction"
+  ]
+}

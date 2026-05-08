@@ -4,7 +4,7 @@ import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Send, Search, MessageCircle, Phone } from "lucide-react";
+import { Send, Search, MessageCircle, Phone, RefreshCw } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
@@ -14,18 +14,23 @@ export default function Chat() {
   const [search, setSearch] = useState("");
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
-  const [chatMessages, setChatMessages] = useState([]);
   const messagesEndRef = useRef(null);
 
   const { data: contacts = [], isLoading } = useQuery({
     queryKey: ["contacts"],
     queryFn: () => base44.entities.Contact.list("-last_contact_date"),
+    refetchInterval: 5000,
   });
 
-  const filtered = contacts.filter(c =>
-    c.name?.toLowerCase().includes(search.toLowerCase()) ||
-    c.phone?.includes(search)
-  );
+  const { data: allMessages = [], refetch: refetchMessages } = useQuery({
+    queryKey: ["messages", selectedContact?.phone],
+    queryFn: () =>
+      selectedContact
+        ? base44.entities.Message.filter({ contact_phone: selectedContact.phone }, "timestamp", 100)
+        : [],
+    enabled: !!selectedContact,
+    refetchInterval: 3000,
+  });
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -33,14 +38,18 @@ export default function Chat() {
 
   useEffect(() => {
     scrollToBottom();
-  }, [chatMessages]);
+  }, [allMessages]);
 
-  // When contact is selected, load last message as preview
+  // Subscribe to real-time message updates
   useEffect(() => {
-    if (selectedContact) {
-      setChatMessages([]);
-    }
-  }, [selectedContact]);
+    const unsub = base44.entities.Message.subscribe((event) => {
+      if (selectedContact && event.data?.contact_phone === selectedContact.phone) {
+        queryClient.invalidateQueries({ queryKey: ["messages", selectedContact.phone] });
+      }
+      queryClient.invalidateQueries({ queryKey: ["contacts"] });
+    });
+    return unsub;
+  }, [selectedContact, queryClient]);
 
   const sendMessage = async () => {
     if (!message.trim() || !selectedContact || sending) return;
@@ -48,18 +57,15 @@ export default function Chat() {
     setMessage("");
     setSending(true);
 
-    // Add to local chat immediately
-    setChatMessages(prev => [...prev, { from: "me", text, time: new Date() }]);
-
     try {
       await base44.functions.invoke("sendWhatsAppMessage", {
         phone: selectedContact.phone,
         message: text,
       });
-      // Update contact's last message
+      refetchMessages();
       queryClient.invalidateQueries({ queryKey: ["contacts"] });
     } catch (e) {
-      setChatMessages(prev => [...prev, { from: "error", text: "Erro ao enviar mensagem.", time: new Date() }]);
+      console.error(e);
     } finally {
       setSending(false);
     }
@@ -80,17 +86,17 @@ export default function Chat() {
 
   return (
     <div className="flex h-screen bg-background">
-      {/* Sidebar - Contacts */}
+      {/* Sidebar - Contatos */}
       <div className="w-80 border-r flex flex-col bg-white">
-        <div className="p-4 border-b">
+        <div className="p-4 border-b bg-[#075e54]">
           <div className="flex items-center gap-2 mb-3">
-            <MessageCircle className="w-5 h-5 text-green-600" />
-            <h1 className="font-bold text-lg">WhatsApp</h1>
+            <MessageCircle className="w-5 h-5 text-white" />
+            <h1 className="font-bold text-lg text-white">WhatsApp</h1>
           </div>
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <Input
-              className="pl-9"
+              className="pl-9 bg-white/90 border-0"
               placeholder="Buscar contato..."
               value={search}
               onChange={e => setSearch(e.target.value)}
@@ -101,76 +107,88 @@ export default function Chat() {
         <div className="flex-1 overflow-y-auto">
           {isLoading ? (
             <div className="p-4 text-center text-muted-foreground text-sm">Carregando...</div>
-          ) : filtered.length === 0 ? (
+          ) : contacts.filter(c =>
+              c.name?.toLowerCase().includes(search.toLowerCase()) ||
+              c.phone?.includes(search)
+            ).length === 0 ? (
             <div className="p-4 text-center text-muted-foreground text-sm">Nenhum contato</div>
           ) : (
-            filtered.map(contact => (
-              <div
-                key={contact.id}
-                className={`flex items-center gap-3 p-4 cursor-pointer hover:bg-gray-50 border-b transition-colors ${selectedContact?.id === contact.id ? "bg-green-50 border-l-4 border-l-green-500" : ""}`}
-                onClick={() => setSelectedContact(contact)}
-              >
-                <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center text-green-700 font-bold text-lg flex-shrink-0">
-                  {(contact.name || contact.phone)?.[0]?.toUpperCase()}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between">
-                    <p className="font-medium text-sm truncate">{contact.name || contact.phone}</p>
-                    {contact.last_contact_date && (
-                      <span className="text-xs text-muted-foreground ml-1 flex-shrink-0">
-                        {format(new Date(contact.last_contact_date), "HH:mm", { locale: ptBR })}
-                      </span>
-                    )}
+            contacts
+              .filter(c =>
+                c.name?.toLowerCase().includes(search.toLowerCase()) ||
+                c.phone?.includes(search)
+              )
+              .map(contact => (
+                <div
+                  key={contact.id}
+                  className={`flex items-center gap-3 p-4 cursor-pointer hover:bg-gray-50 border-b transition-colors ${selectedContact?.id === contact.id ? "bg-[#f0f0f0]" : ""}`}
+                  onClick={() => setSelectedContact(contact)}
+                >
+                  <div className="w-12 h-12 rounded-full bg-[#dfe5e7] flex items-center justify-center text-[#54656f] font-bold text-xl flex-shrink-0">
+                    {(contact.name || contact.phone)?.[0]?.toUpperCase()}
                   </div>
-                  <p className="text-xs text-muted-foreground truncate">{contact.last_message || contact.phone}</p>
+                  <div className="flex-1 min-w-0 border-b pb-4">
+                    <div className="flex items-center justify-between">
+                      <p className="font-medium text-sm truncate">{contact.name || contact.phone}</p>
+                      {contact.last_contact_date && (
+                        <span className="text-xs text-[#667781] ml-1 flex-shrink-0">
+                          {format(new Date(contact.last_contact_date), "HH:mm", { locale: ptBR })}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-[#667781] truncate">{contact.last_message || contact.phone}</p>
+                  </div>
                 </div>
-              </div>
-            ))
+              ))
           )}
         </div>
       </div>
 
-      {/* Chat Area */}
+      {/* Área do Chat */}
       <div className="flex-1 flex flex-col">
         {selectedContact ? (
           <>
-            {/* Chat Header */}
-            <div className="p-4 border-b bg-white flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center text-green-700 font-bold text-lg">
+            {/* Header */}
+            <div className="p-3 bg-[#f0f2f5] border-b flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-[#dfe5e7] flex items-center justify-center text-[#54656f] font-bold text-lg">
                 {(selectedContact.name || selectedContact.phone)?.[0]?.toUpperCase()}
               </div>
-              <div>
-                <p className="font-semibold">{selectedContact.name || selectedContact.phone}</p>
+              <div className="flex-1">
+                <p className="font-semibold text-[#111b21]">{selectedContact.name || selectedContact.phone}</p>
                 <div className="flex items-center gap-2">
-                  <Phone className="w-3 h-3 text-muted-foreground" />
-                  <span className="text-xs text-muted-foreground">{selectedContact.phone}</span>
+                  <Phone className="w-3 h-3 text-[#667781]" />
+                  <span className="text-xs text-[#667781]">{selectedContact.phone}</span>
                   <Badge className={`text-xs ${statusColor[selectedContact.status]}`}>{selectedContact.status}</Badge>
                 </div>
               </div>
+              <Button size="icon" variant="ghost" onClick={() => refetchMessages()}>
+                <RefreshCw className="w-4 h-4 text-[#54656f]" />
+              </Button>
             </div>
 
-            {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-[#e5ddd5]">
-              {chatMessages.length === 0 && (
+            {/* Mensagens */}
+            <div
+              className="flex-1 overflow-y-auto p-4 space-y-2"
+              style={{ background: "#e5ddd5 url(\"data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23b4b4b4' fill-opacity='0.08'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E\")" }}
+            >
+              {allMessages.length === 0 && (
                 <div className="text-center text-sm text-gray-500 mt-8">
                   <MessageCircle className="w-10 h-10 mx-auto mb-2 opacity-30" />
-                  <p>Nenhuma mensagem nesta sessão.</p>
-                  <p className="text-xs mt-1">As mensagens recebidas aparecem na aba Contatos.</p>
+                  <p>Nenhuma mensagem ainda.</p>
+                  <p className="text-xs mt-1">Envie uma mensagem para começar.</p>
                 </div>
               )}
-              {chatMessages.map((msg, i) => (
-                <div key={i} className={`flex ${msg.from === "me" ? "justify-end" : "justify-start"}`}>
-                  <div className={`max-w-xs lg:max-w-md px-4 py-2 rounded-2xl text-sm shadow-sm ${
-                    msg.from === "me"
-                      ? "bg-[#dcf8c6] text-gray-800 rounded-br-sm"
-                      : msg.from === "error"
-                      ? "bg-red-100 text-red-700"
-                      : "bg-white text-gray-800 rounded-bl-sm"
+              {allMessages.map((msg, i) => (
+                <div key={msg.id || i} className={`flex ${msg.direction === "sent" ? "justify-end" : "justify-start"}`}>
+                  <div className={`max-w-xs lg:max-w-md px-3 py-2 rounded-lg text-sm shadow-sm relative ${
+                    msg.direction === "sent"
+                      ? "bg-[#d9fdd3] text-[#111b21] rounded-tr-none"
+                      : "bg-white text-[#111b21] rounded-tl-none"
                   }`}>
-                    <p>{msg.text}</p>
-                    <p className="text-xs text-gray-400 mt-1 text-right">
-                      {format(msg.time, "HH:mm")}
-                      {msg.from === "me" && " ✓✓"}
+                    <p className="whitespace-pre-wrap">{msg.text}</p>
+                    <p className="text-[10px] text-[#667781] mt-1 text-right">
+                      {msg.timestamp ? format(new Date(msg.timestamp), "HH:mm") : ""}
+                      {msg.direction === "sent" && <span className="ml-1 text-[#53bdeb]">✓✓</span>}
                     </p>
                   </div>
                 </div>
@@ -179,9 +197,9 @@ export default function Chat() {
             </div>
 
             {/* Input */}
-            <div className="p-4 bg-white border-t flex items-center gap-2">
+            <div className="p-3 bg-[#f0f2f5] border-t flex items-center gap-2">
               <Input
-                className="flex-1"
+                className="flex-1 bg-white rounded-full border-0 shadow-sm px-4"
                 placeholder="Digite uma mensagem..."
                 value={message}
                 onChange={e => setMessage(e.target.value)}
@@ -190,7 +208,7 @@ export default function Chat() {
               />
               <Button
                 size="icon"
-                className="bg-green-600 hover:bg-green-700 text-white"
+                className="rounded-full bg-[#00a884] hover:bg-[#02906f] text-white w-10 h-10"
                 onClick={sendMessage}
                 disabled={!message.trim() || sending}
               >
@@ -199,10 +217,12 @@ export default function Chat() {
             </div>
           </>
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground bg-[#f0f0f0]">
-            <MessageCircle className="w-16 h-16 mb-4 opacity-20" />
-            <p className="text-lg font-medium">Selecione um contato</p>
-            <p className="text-sm mt-1">Escolha um contato na lista para iniciar uma conversa</p>
+          <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground bg-[#f0f2f5]">
+            <div className="bg-white rounded-full p-6 mb-4 shadow-sm">
+              <MessageCircle className="w-16 h-16 opacity-20 text-[#00a884]" />
+            </div>
+            <p className="text-xl font-light text-[#41525d]">WhatsApp Web</p>
+            <p className="text-sm mt-2 text-[#667781]">Selecione um contato para ver as mensagens</p>
           </div>
         )}
       </div>
