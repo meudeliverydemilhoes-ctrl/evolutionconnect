@@ -124,44 +124,51 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json();
-    console.log("Webhook recebido - evento:", body?.event, "| keys:", Object.keys(body || {}));
-    console.log("Webhook data keys:", Object.keys(body?.data || {}));
-    console.log("Webhook message keys:", Object.keys(body?.data?.message || {}));
+    console.log("PAYLOAD COMPLETO:", JSON.stringify(body));
 
     const event = body?.event;
-    const data = body?.data;
 
-    if (!data) {
-      return Response.json({ status: "ignored - no data" });
-    }
-
-    // Aceita tanto "messages.upsert" quanto outros eventos de mensagem da Evolution
-    const validEvents = ["messages.upsert", "MESSAGES_UPSERT", "message"];
-    if (event && !validEvents.includes(event)) {
-      console.log("Evento ignorado:", event);
-      return Response.json({ status: "ignored - event: " + event });
-    }
-
+    // Suporte ao formato Evolution v1 (data direto) e v2 (body.data)
+    const data = body?.data || body;
     const message = data?.message;
     const key = data?.key;
 
     // Ignorar mensagens enviadas por nós
-    if (key?.fromMe) {
+    if (key?.fromMe === true) {
+      console.log("Ignorado: mensagem própria");
       return Response.json({ status: "ignored - own message" });
     }
 
-    const phoneRaw = key?.remoteJid || "";
-    const phone = phoneRaw.replace("@s.whatsapp.net", "").replace("@c.us", "");
-    const pushName = data?.pushName || "";
-    const messageText = message?.conversation 
-      || message?.extendedTextMessage?.text 
+    // Ignorar eventos que não são de mensagem
+    if (event && !["messages.upsert", "MESSAGES_UPSERT", "message", "messages.update"].includes(event)) {
+      console.log("Evento ignorado:", event);
+      return Response.json({ status: "ignored - event: " + event });
+    }
+
+    const phoneRaw = key?.remoteJid || data?.from || "";
+    // Ignorar mensagens de grupos
+    if (phoneRaw.includes("@g.us")) {
+      console.log("Ignorado: mensagem de grupo");
+      return Response.json({ status: "ignored - group message" });
+    }
+
+    const phone = phoneRaw.replace("@s.whatsapp.net", "").replace("@c.us", "").replace(/\D/g, "").replace(/^55/, "55");
+    const pushName = data?.pushName || data?.notifyName || "";
+    const messageText = message?.conversation
+      || message?.extendedTextMessage?.text
       || message?.imageMessage?.caption
       || message?.videoMessage?.caption
       || message?.audioMessage?.caption
+      || message?.documentMessage?.caption
+      || message?.stickerMessage?.caption
       || data?.body
+      || body?.body
       || "";
 
+    console.log(`phone="${phone}" | texto="${messageText}" | pushName="${pushName}"`);
+
     if (!phone || !messageText) {
+      console.log("Ignorado: sem telefone ou texto. remoteJid:", phoneRaw, "| messageKeys:", Object.keys(message || {}));
       return Response.json({ status: "ignored - no content" });
     }
 
