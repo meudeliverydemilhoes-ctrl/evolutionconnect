@@ -6,9 +6,9 @@ import { useToast } from "@/components/ui/use-toast";
 
 export default function WhatsAppSetup() {
   const { toast } = useToast();
-  const appId = import.meta.env.VITE_APP_ID || window.location.hostname.split(".")[0];
 
-  // The webhook URL for Evolution API
+  // URL correta baseada no domínio atual do app
+  const appId = window.location.hostname.split(".")[0];
   const webhookUrl = `https://api.base44.com/api/apps/${appId}/functions/whatsappWebhook`;
 
   const copyUrl = () => {
