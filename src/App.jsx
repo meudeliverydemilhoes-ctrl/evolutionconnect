@@ -9,6 +9,7 @@ import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import Contacts from "./pages/Contacts";
 import Orders from "./pages/Orders";
 import WhatsAppSetup from "./pages/WhatsAppSetup";
+import Chat from "./pages/Chat";
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -37,7 +38,7 @@ const AuthenticatedApp = () => {
   return (
     <Routes>
       {/* Add your page Route elements here */}
-      <Route path="/" element={<Contacts />} />
+      <Route path="/" element={<Chat />} />
       <Route path="/contacts" element={<Contacts />} />
       <Route path="/orders" element={<Orders />} />
       <Route path="/whatsapp-setup" element={<WhatsAppSetup />} />
