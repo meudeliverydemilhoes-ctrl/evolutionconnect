@@ -124,13 +124,22 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json();
-    console.log("Webhook recebido:", JSON.stringify(body));
+    console.log("Webhook recebido - evento:", body?.event, "| keys:", Object.keys(body || {}));
+    console.log("Webhook data keys:", Object.keys(body?.data || {}));
+    console.log("Webhook message keys:", Object.keys(body?.data?.message || {}));
 
     const event = body?.event;
     const data = body?.data;
 
-    if (event !== "messages.upsert" || !data) {
-      return Response.json({ status: "ignored" });
+    if (!data) {
+      return Response.json({ status: "ignored - no data" });
+    }
+
+    // Aceita tanto "messages.upsert" quanto outros eventos de mensagem da Evolution
+    const validEvents = ["messages.upsert", "MESSAGES_UPSERT", "message"];
+    if (event && !validEvents.includes(event)) {
+      console.log("Evento ignorado:", event);
+      return Response.json({ status: "ignored - event: " + event });
     }
 
     const message = data?.message;
@@ -144,7 +153,13 @@ Deno.serve(async (req) => {
     const phoneRaw = key?.remoteJid || "";
     const phone = phoneRaw.replace("@s.whatsapp.net", "").replace("@c.us", "");
     const pushName = data?.pushName || "";
-    const messageText = message?.conversation || message?.extendedTextMessage?.text || "";
+    const messageText = message?.conversation 
+      || message?.extendedTextMessage?.text 
+      || message?.imageMessage?.caption
+      || message?.videoMessage?.caption
+      || message?.audioMessage?.caption
+      || data?.body
+      || "";
 
     if (!phone || !messageText) {
       return Response.json({ status: "ignored - no content" });
