@@ -1,0 +1,60 @@
+{
+  "name": "Order",
+  "type": "object",
+  "properties": {
+    "order_number": {
+      "type": "string",
+      "description": "N\u00famero do pedido"
+    },
+    "contact_phone": {
+      "type": "string",
+      "description": "Telefone do cliente (WhatsApp)"
+    },
+    "contact_name": {
+      "type": "string",
+      "description": "Nome do cliente"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pendente",
+        "confirmado",
+        "preparando",
+        "enviado",
+        "entregue",
+        "cancelado"
+      ],
+      "default": "pendente",
+      "description": "Status do pedido"
+    },
+    "items": {
+      "type": "string",
+      "description": "Itens do pedido (descri\u00e7\u00e3o)"
+    },
+    "total_amount": {
+      "type": "number",
+      "description": "Valor total do pedido"
+    },
+    "tracking_link": {
+      "type": "string",
+      "description": "Link de rastreamento"
+    },
+    "tracking_code": {
+      "type": "string",
+      "description": "C\u00f3digo de rastreamento"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Observa\u00e7\u00f5es do pedido"
+    },
+    "whatsapp_notified": {
+      "type": "boolean",
+      "default": false,
+      "description": "Se o cliente j\u00e1 foi notificado pelo WhatsApp"
+    }
+  },
+  "required": [
+    "contact_phone",
+    "order_number"
+  ]
+}

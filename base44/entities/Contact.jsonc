@@ -1,0 +1,44 @@
+{
+  "name": "Contact",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Nome do contato"
+    },
+    "phone": {
+      "type": "string",
+      "description": "N\u00famero de WhatsApp (com DDI, ex: 5511999999999)"
+    },
+    "email": {
+      "type": "string",
+      "description": "Email do contato"
+    },
+    "last_message": {
+      "type": "string",
+      "description": "\u00daltima mensagem recebida"
+    },
+    "last_contact_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Data do \u00faltimo contato"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "ativo",
+        "inativo",
+        "bloqueado"
+      ],
+      "default": "ativo",
+      "description": "Status do contato"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Observa\u00e7\u00f5es sobre o contato"
+    }
+  },
+  "required": [
+    "phone"
+  ]
+}
