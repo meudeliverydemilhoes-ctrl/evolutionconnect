@@ -156,11 +156,12 @@ Deno.serve(async (req) => {
       return Response.json({ status: "ignored - event: " + event });
     }
 
-    const phoneRaw = key?.remoteJid || data?.from || "";
+    // Suporte ao novo formato @lid do WhatsApp - usar remoteJidAlt quando disponível
+    const phoneRaw = key?.remoteJidAlt || (key?.remoteJid?.includes("@lid") ? null : key?.remoteJid) || data?.from || "";
     // Ignorar mensagens de grupos
-    if (phoneRaw.includes("@g.us")) {
-      console.log("Ignorado: mensagem de grupo");
-      return Response.json({ status: "ignored - group message" });
+    if (!phoneRaw || phoneRaw.includes("@g.us")) {
+      console.log("Ignorado: mensagem de grupo ou sem remoteJid válido");
+      return Response.json({ status: "ignored - group message or no valid jid" });
     }
 
     const phone = phoneRaw.replace("@s.whatsapp.net", "").replace("@c.us", "").replace(/\D/g, "").replace(/^55/, "55");
