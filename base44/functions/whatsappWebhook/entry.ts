@@ -168,7 +168,13 @@ Deno.serve(async (req) => {
       return Response.json({ status: "ignored - group message or no valid jid" });
     }
 
-    const phone = phoneRaw.replace("@s.whatsapp.net", "").replace("@c.us", "").replace(/\D/g, "").replace(/^55/, "55");
+    // phoneRaw pode ser ex: 555199667558@s.whatsapp.net (faltando dígito 9)
+    // Corrigir número BR: 55 + DDD(2) + 9 + número(8) = 13 dígitos total
+    let phone = phoneRaw.replace("@s.whatsapp.net", "").replace("@c.us", "").replace(/\D/g, "");
+    // Se número BR (começa com 55) e tem 12 dígitos (sem o 9), inserir o 9
+    if (phone.startsWith("55") && phone.length === 12) {
+      phone = phone.slice(0, 4) + "9" + phone.slice(4);
+    }
     const pushName = data?.pushName || data?.notifyName || "";
     const messageText = message?.conversation
       || message?.extendedTextMessage?.text

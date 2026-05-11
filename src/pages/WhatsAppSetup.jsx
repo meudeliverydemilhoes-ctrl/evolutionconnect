@@ -12,6 +12,7 @@ export default function WhatsAppSetup() {
   const appId = appParams.appId;
   const webhookUrl = `https://api.base44.com/api/apps/${appId}/functions/whatsappWebhook`;
 
+
   const copyUrl = () => {
     navigator.clipboard.writeText(webhookUrl);
     toast({ title: "URL copiada!" });
