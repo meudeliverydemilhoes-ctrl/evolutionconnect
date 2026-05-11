@@ -12,7 +12,7 @@ Deno.serve(async (req) => {
 
     const webhookUrl = `https://api.base44.com/api/apps/69fdf1d6c6b9e252de270971/functions/whatsappWebhook`;
 
-    // Configurar webhook via API da Evolution
+    // Configurar webhook via API da Evolution (apenas eventos válidos)
     const res = await fetch(`${EVOLUTION_API_URL}/webhook/set/${EVOLUTION_INSTANCE}`, {
       method: "POST",
       headers: {
@@ -26,15 +26,14 @@ Deno.serve(async (req) => {
           webhookByEvents: false,
           webhookBase64: false,
           events: [
-            "MESSAGES_UPSERT",
-            "messages.upsert"
+            "MESSAGES_UPSERT"
           ]
         }
       }),
     });
 
     const data = await res.json();
-    console.log("Resposta da Evolution:", JSON.stringify(data));
+    console.log("Resposta SET:", JSON.stringify(data));
 
     // Verificar o webhook configurado
     const checkRes = await fetch(`${EVOLUTION_API_URL}/webhook/find/${EVOLUTION_INSTANCE}`, {
@@ -50,7 +49,22 @@ Deno.serve(async (req) => {
     const statusData = await statusRes.json();
     console.log("Status instância:", JSON.stringify(statusData));
 
-    return Response.json({ set: data, current: checkData, instance_status: statusData });
+    // Tentar enviar uma mensagem de teste para verificar se a instância responde
+    const testSendRes = await fetch(`${EVOLUTION_API_URL}/message/sendText/${EVOLUTION_INSTANCE}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "apikey": EVOLUTION_API_KEY,
+      },
+      body: JSON.stringify({
+        number: "5511999999999",
+        text: "[TESTE] Webhook configurado com sucesso!"
+      }),
+    });
+    const testSendData = await testSendRes.json();
+    console.log("Teste envio:", JSON.stringify(testSendData));
+
+    return Response.json({ set: data, current: checkData, instance_status: statusData, test_send: testSendData });
   } catch (error) {
     console.error("Erro:", error);
     return Response.json({ error: error.message }, { status: 500 });
