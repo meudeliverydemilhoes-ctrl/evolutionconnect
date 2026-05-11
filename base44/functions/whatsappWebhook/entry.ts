@@ -123,8 +123,19 @@ Deno.serve(async (req) => {
       return Response.json({ status: "ok", message: "WhatsApp Webhook ativo" });
     }
 
-    const body = await req.json();
+    const bodyText = await req.text();
+    console.log("RAW BODY:", bodyText);
+    
+    let body;
+    try {
+      body = JSON.parse(bodyText);
+    } catch(e) {
+      console.log("Erro ao parsear JSON:", e.message);
+      return Response.json({ status: "error parsing body" });
+    }
+    
     console.log("PAYLOAD COMPLETO:", JSON.stringify(body));
+    console.log("HEADERS:", JSON.stringify(Object.fromEntries(req.headers.entries())));
 
     const event = body?.event;
 
