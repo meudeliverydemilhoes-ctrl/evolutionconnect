@@ -156,6 +156,10 @@ Deno.serve(async (req) => {
       return Response.json({ status: "ignored - event: " + event });
     }
 
+    // Log completo do key para debug do @lid
+    console.log("KEY COMPLETO:", JSON.stringify(key));
+    console.log("DATA KEYS:", Object.keys(data || {}));
+
     // Suporte ao novo formato @lid do WhatsApp - usar remoteJidAlt quando disponível
     const phoneRaw = key?.remoteJidAlt || (key?.remoteJid?.includes("@lid") ? null : key?.remoteJid) || data?.from || "";
     // Ignorar mensagens de grupos
