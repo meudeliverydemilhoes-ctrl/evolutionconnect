@@ -64,7 +64,14 @@ Deno.serve(async (req) => {
     const testSendData = await testSendRes.json();
     console.log("Teste envio:", JSON.stringify(testSendData));
 
-    return Response.json({ set: data, current: checkData, instance_status: statusData, test_send: testSendData });
+    // Buscar info da instância (número conectado)
+    const infoRes = await fetch(`${EVOLUTION_API_URL}/instance/fetchInstances`, {
+      headers: { "apikey": EVOLUTION_API_KEY }
+    });
+    const infoData = await infoRes.json();
+    console.log("Instâncias:", JSON.stringify(infoData));
+
+    return Response.json({ set: data, current: checkData, instance_status: statusData, test_send: testSendData, instances: infoData });
   } catch (error) {
     console.error("Erro:", error);
     return Response.json({ error: error.message }, { status: 500 });
