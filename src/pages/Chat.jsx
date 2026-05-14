@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Send, Search, MessageCircle, Phone, RefreshCw, Wifi, WifiOff } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { useEvolutionSocket } from "@/hooks/useEvolutionSocket";
+import { useEvolutionSSE } from "@/hooks/useEvolutionSSE";
 
 export default function Chat() {
   const queryClient = useQueryClient();
@@ -17,7 +17,7 @@ export default function Chat() {
   const [sending, setSending] = useState(false);
   const messagesEndRef = useRef(null);
 
-  const { status: socketStatus } = useEvolutionSocket({
+  const { status: socketStatus } = useEvolutionSSE({
     onNewMessage: ({ phone }) => {
       queryClient.invalidateQueries({ queryKey: ["contacts"] });
       if (selectedContact?.phone === phone) {
