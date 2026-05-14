@@ -10,6 +10,7 @@ import Contacts from "./pages/Contacts";
 import Orders from "./pages/Orders";
 import WhatsAppSetup from "./pages/WhatsAppSetup";
 import Chat from "./pages/Chat";
+import DebugWebhook from "./pages/DebugWebhook";
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -42,6 +43,7 @@ const AuthenticatedApp = () => {
       <Route path="/contacts" element={<Contacts />} />
       <Route path="/orders" element={<Orders />} />
       <Route path="/whatsapp-setup" element={<WhatsAppSetup />} />
+      <Route path="/debug-webhook" element={<DebugWebhook />} />
       <Route path="*" element={<PageNotFound />} />
     </Routes>
   );
