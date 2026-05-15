@@ -109,15 +109,19 @@ Deno.serve(async (req) => {
 
       if (!text) return;
 
-      // Deduplicar pelo messageId da Evolution
       const msgId = key?.id;
-      if (msgId && isDuplicate(msgId)) {
-        console.log(`[SSE Proxy] Duplicata ignorada: ${msgId}`);
-        return;
-      }
-
       const msgTimestamp = msgData?.messageTimestamp || Math.floor(Date.now() / 1000);
       const timestamp = new Date(msgTimestamp * 1000).toISOString();
+
+      // Deduplicar: verificar no banco se já existe mensagem com esse messageId
+      if (msgId) {
+        const existing = await base44.asServiceRole.entities.Message.filter({ whatsapp_message_id: msgId });
+        if (existing && existing.length > 0) {
+          console.log(`[SSE Proxy] Duplicata ignorada (já no banco): ${msgId}`);
+          send("new_message", { phone, text, pushName, timestamp });
+          return;
+        }
+      }
 
       console.log(`[SSE Proxy] Salvando mensagem de ${phone}: ${text}`);
 
@@ -127,6 +131,7 @@ Deno.serve(async (req) => {
         text,
         direction: "received",
         timestamp,
+        whatsapp_message_id: msgId || null,
       });
 
       // Criar/atualizar contato
