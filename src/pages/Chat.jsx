@@ -4,11 +4,9 @@ import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Send, Search, MessageCircle, Phone, RefreshCw, Wifi, WifiOff, Mic, FileText, Image, Video, MapPin, User, Users } from "lucide-react";
+import { Send, Search, MessageCircle, Phone, RefreshCw, Wifi } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { useEvolutionSSE } from "@/hooks/useEvolutionSSE";
-
 export default function Chat() {
   const queryClient = useQueryClient();
   const [selectedContact, setSelectedContact] = useState(null);
@@ -17,14 +15,6 @@ export default function Chat() {
   const [sending, setSending] = useState(false);
   const messagesEndRef = useRef(null);
 
-  const { status: socketStatus } = useEvolutionSSE({
-    onNewMessage: ({ phone }) => {
-      queryClient.invalidateQueries({ queryKey: ["contacts"] });
-      if (selectedContact?.phone === phone) {
-        queryClient.invalidateQueries({ queryKey: ["messages", phone] });
-      }
-    },
-  });
 
   const { data: contacts = [], isLoading } = useQuery({
     queryKey: ["contacts"],
@@ -50,13 +40,13 @@ export default function Chat() {
     scrollToBottom();
   }, [allMessages]);
 
-  // Subscribe to real-time message updates
+  // Subscribe nativo em tempo real — sem socket.io extra
   useEffect(() => {
     const unsub = base44.entities.Message.subscribe((event) => {
+      queryClient.invalidateQueries({ queryKey: ["contacts"] });
       if (selectedContact && event.data?.contact_phone === selectedContact.phone) {
         queryClient.invalidateQueries({ queryKey: ["messages", selectedContact.phone] });
       }
-      queryClient.invalidateQueries({ queryKey: ["contacts"] });
     });
     return unsub;
   }, [selectedContact, queryClient]);
@@ -103,13 +93,8 @@ export default function Chat() {
             <MessageCircle className="w-5 h-5 text-white" />
             <h1 className="font-bold text-lg text-white">WhatsApp</h1>
             <div className="ml-auto flex items-center gap-1">
-              {socketStatus === "connected" ? (
-                <><Wifi className="w-4 h-4 text-green-300" /><span className="text-xs text-green-300">Live</span></>
-              ) : socketStatus === "error" ? (
-                <><WifiOff className="w-4 h-4 text-red-300" /><span className="text-xs text-red-300">Erro</span></>
-              ) : (
-                <><WifiOff className="w-4 h-4 text-yellow-300 animate-pulse" /><span className="text-xs text-yellow-300">Conectando...</span></>
-              )}
+              <><Wifi className="w-4 h-4 text-green-300" /><span className="text-xs text-green-300">Live</span></>
+
             </div>
           </div>
           <div className="relative">

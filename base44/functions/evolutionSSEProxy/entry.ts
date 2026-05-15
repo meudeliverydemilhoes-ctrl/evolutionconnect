@@ -81,21 +81,28 @@ Deno.serve(async (req) => {
     const phone = normalizePhone(phoneRaw);
     if (!phone) return null;
 
-    const text =
-      message?.conversation ||
-      message?.extendedTextMessage?.text ||
-      message?.imageMessage?.caption ||
-      message?.videoMessage?.caption ||
-      message?.audioMessage?.caption ||
-      msgData?.body || data?.body || "";
+    // Detectar qualquer tipo de conteúdo (texto, mídia, áudio, documento, contato, etc.)
+    const hasContent = message && (
+      message.conversation ||
+      message.extendedTextMessage ||
+      message.imageMessage ||
+      message.videoMessage ||
+      message.audioMessage ||
+      message.documentMessage ||
+      message.stickerMessage ||
+      message.contactMessage ||
+      message.contactsArrayMessage ||
+      message.locationMessage ||
+      msgData?.body || data?.body
+    );
 
-    if (!text) return null;
+    if (!hasContent) return null;
 
     const timestamp = msgData?.messageTimestamp
       ? new Date(msgData.messageTimestamp * 1000).toISOString()
       : new Date().toISOString();
 
-    return { phone, text, pushName, timestamp };
+    return { phone, pushName, timestamp };
   }
 
   // Escutar APENAS MESSAGES_UPSERT para evitar duplicação
