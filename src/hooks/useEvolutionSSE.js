@@ -70,13 +70,14 @@ function ensureConnected() {
   });
 
   es.onerror = () => {
-    addGlobalLog("error", "SSE erro", { msg: `Reconectando em ${Math.min(30000, 1000 * Math.pow(2, reconnectAttempts))}ms...` });
+    const delayMs = Math.min(60000, 5000 * Math.pow(2, reconnectAttempts));
+    addGlobalLog("error", "SSE erro", { msg: `Reconectando em ${delayMs}ms (tentativa ${reconnectAttempts + 1})...` });
     notifyStatus("error");
     es.close();
     globalES = null;
     reconnectAttempts++;
     if (reconnectTimeout) clearTimeout(reconnectTimeout);
-    reconnectTimeout = setTimeout(ensureConnected, Math.min(30000, 1000 * Math.pow(2, reconnectAttempts)));
+    reconnectTimeout = setTimeout(ensureConnected, delayMs);
   };
 }
 
