@@ -228,14 +228,7 @@ Deno.serve(async (req) => {
 
     console.log(`Mensagem de ${phone} (${pushName}): ${messageText}`);
 
-    // Salvar mensagem recebida no histórico
-    await base44.asServiceRole.entities.Message.create({
-      contact_phone: phone,
-      text: messageText,
-      direction: "received",
-      timestamp: new Date().toISOString(),
-    });
-
+    // NOTA: Mensagem já foi salva pelo SSE Proxy, apenas garantir que contato existe
     // Encontrar ou criar contato
     const contacts = await base44.asServiceRole.entities.Contact.filter({ phone });
     let contact;
