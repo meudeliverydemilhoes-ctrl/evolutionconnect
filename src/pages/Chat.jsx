@@ -4,9 +4,11 @@ import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Send, Search, MessageCircle, Phone, RefreshCw, Wifi } from "lucide-react";
+import { Send, Search, MessageCircle, Phone, RefreshCw, Wifi, WifiOff } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { useEvolutionSSE } from "@/hooks/useEvolutionSSE";
+
 export default function Chat() {
   const queryClient = useQueryClient();
   const [selectedContact, setSelectedContact] = useState(null);
@@ -15,6 +17,14 @@ export default function Chat() {
   const [sending, setSending] = useState(false);
   const messagesEndRef = useRef(null);
 
+  const { status: socketStatus } = useEvolutionSSE({
+    onNewMessage: ({ phone }) => {
+      queryClient.invalidateQueries({ queryKey: ["contacts"] });
+      if (selectedContact?.phone === phone) {
+        queryClient.invalidateQueries({ queryKey: ["messages", phone] });
+      }
+    },
+  });
 
   const { data: contacts = [], isLoading } = useQuery({
     queryKey: ["contacts"],
@@ -40,13 +50,13 @@ export default function Chat() {
     scrollToBottom();
   }, [allMessages]);
 
-  // Subscribe nativo em tempo real — sem socket.io extra
+  // Subscribe to real-time message updates
   useEffect(() => {
     const unsub = base44.entities.Message.subscribe((event) => {
-      queryClient.invalidateQueries({ queryKey: ["contacts"] });
       if (selectedContact && event.data?.contact_phone === selectedContact.phone) {
         queryClient.invalidateQueries({ queryKey: ["messages", selectedContact.phone] });
       }
+      queryClient.invalidateQueries({ queryKey: ["contacts"] });
     });
     return unsub;
   }, [selectedContact, queryClient]);
@@ -93,8 +103,13 @@ export default function Chat() {
             <MessageCircle className="w-5 h-5 text-white" />
             <h1 className="font-bold text-lg text-white">WhatsApp</h1>
             <div className="ml-auto flex items-center gap-1">
-              <><Wifi className="w-4 h-4 text-green-300" /><span className="text-xs text-green-300">Live</span></>
-
+              {socketStatus === "connected" ? (
+                <><Wifi className="w-4 h-4 text-green-300" /><span className="text-xs text-green-300">Live</span></>
+              ) : socketStatus === "error" ? (
+                <><WifiOff className="w-4 h-4 text-red-300" /><span className="text-xs text-red-300">Erro</span></>
+              ) : (
+                <><WifiOff className="w-4 h-4 text-yellow-300 animate-pulse" /><span className="text-xs text-yellow-300">Conectando...</span></>
+              )}
             </div>
           </div>
           <div className="relative">
@@ -182,31 +197,21 @@ export default function Chat() {
                   <p className="text-xs mt-1">Envie uma mensagem para começar.</p>
                 </div>
               )}
-              {allMessages.map((msg, i) => {
-                const isMedia = msg.text?.startsWith("🎵") || msg.text?.startsWith("📷") ||
-                  msg.text?.startsWith("🎬") || msg.text?.startsWith("📄") ||
-                  msg.text?.startsWith("👤") || msg.text?.startsWith("👥") ||
-                  msg.text?.startsWith("📍") || msg.text?.startsWith("🩷");
-                return (
-                  <div key={msg.id || i} className={`flex ${msg.direction === "sent" ? "justify-end" : "justify-start"}`}>
-                    <div className={`max-w-xs lg:max-w-md px-3 py-2 rounded-lg text-sm shadow-sm relative ${
-                      msg.direction === "sent"
-                        ? "bg-[#d9fdd3] text-[#111b21] rounded-tr-none"
-                        : "bg-white text-[#111b21] rounded-tl-none"
-                    }`}>
-                      {isMedia ? (
-                        <p className="whitespace-pre-wrap text-[#667781] italic">{msg.text}</p>
-                      ) : (
-                        <p className="whitespace-pre-wrap">{msg.text}</p>
-                      )}
-                      <p className="text-[10px] text-[#667781] mt-1 text-right">
-                        {msg.timestamp ? format(new Date(msg.timestamp), "HH:mm") : ""}
-                        {msg.direction === "sent" && <span className="ml-1 text-[#53bdeb]">✓✓</span>}
-                      </p>
-                    </div>
+              {allMessages.map((msg, i) => (
+                <div key={msg.id || i} className={`flex ${msg.direction === "sent" ? "justify-end" : "justify-start"}`}>
+                  <div className={`max-w-xs lg:max-w-md px-3 py-2 rounded-lg text-sm shadow-sm relative ${
+                    msg.direction === "sent"
+                      ? "bg-[#d9fdd3] text-[#111b21] rounded-tr-none"
+                      : "bg-white text-[#111b21] rounded-tl-none"
+                  }`}>
+                    <p className="whitespace-pre-wrap">{msg.text}</p>
+                    <p className="text-[10px] text-[#667781] mt-1 text-right">
+                      {msg.timestamp ? format(new Date(msg.timestamp), "HH:mm") : ""}
+                      {msg.direction === "sent" && <span className="ml-1 text-[#53bdeb]">✓✓</span>}
+                    </p>
                   </div>
-                );
-              })}
+                </div>
+              ))}
               <div ref={messagesEndRef} />
             </div>
 

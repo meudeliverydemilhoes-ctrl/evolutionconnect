@@ -176,55 +176,23 @@ Deno.serve(async (req) => {
       phone = phone.slice(0, 4) + "9" + phone.slice(4);
     }
     const pushName = data?.pushName || data?.notifyName || "";
+    const messageText = message?.conversation
+      || message?.extendedTextMessage?.text
+      || message?.imageMessage?.caption
+      || message?.videoMessage?.caption
+      || message?.audioMessage?.caption
+      || message?.documentMessage?.caption
+      || message?.stickerMessage?.caption
+      || data?.body
+      || body?.body
+      || "";
 
-    // Detectar tipo de mídia e extrair texto/descrição
-    let messageText = "";
-    let messageType = "text";
+    console.log(`phone="${phone}" | texto="${messageText}" | pushName="${pushName}"`);
 
-    if (message?.conversation || message?.extendedTextMessage?.text) {
-      messageText = message.conversation || message.extendedTextMessage.text;
-      messageType = "text";
-    } else if (message?.audioMessage) {
-      messageText = message.audioMessage.caption || "🎵 Áudio";
-      messageType = "audio";
-    } else if (message?.imageMessage) {
-      messageText = message.imageMessage.caption || "📷 Imagem";
-      messageType = "image";
-    } else if (message?.videoMessage) {
-      messageText = message.videoMessage.caption || "🎬 Vídeo";
-      messageType = "video";
-    } else if (message?.documentMessage) {
-      const filename = message.documentMessage.fileName || "documento";
-      messageText = message.documentMessage.caption || `📄 Documento: ${filename}`;
-      messageType = "document";
-    } else if (message?.stickerMessage) {
-      messageText = "🩷 Sticker";
-      messageType = "sticker";
-    } else if (message?.contactMessage) {
-      const contactName = message.contactMessage.displayName || "";
-      const vcard = message.contactMessage.vcard || "";
-      const phoneMatch = vcard.match(/TEL[^:]*:([^\r\n]+)/);
-      const contactPhone = phoneMatch ? phoneMatch[1].replace(/\D/g, "") : "";
-      messageText = `👤 Contato: ${contactName}${contactPhone ? ` (${contactPhone})` : ""}`;
-      messageType = "contact";
-    } else if (message?.contactsArrayMessage) {
-      const names = (message.contactsArrayMessage.contacts || []).map(c => c.displayName).join(", ");
-      messageText = `👥 Contatos: ${names}`;
-      messageType = "contact";
-    } else if (message?.locationMessage) {
-      const lat = message.locationMessage.degreesLatitude;
-      const lng = message.locationMessage.degreesLongitude;
-      messageText = `📍 Localização: ${lat},${lng}`;
-      messageType = "location";
-    } else {
-      messageText = data?.body || body?.body || "";
-      if (!messageText) {
-        console.log("Ignorado: sem conteúdo reconhecível. messageKeys:", Object.keys(message || {}));
-        return Response.json({ status: "ignored - no content" });
-      }
+    if (!phone || !messageText) {
+      console.log("Ignorado: sem telefone ou texto. remoteJid:", phoneRaw, "| messageKeys:", Object.keys(message || {}));
+      return Response.json({ status: "ignored - no content" });
     }
-
-    console.log(`phone="${phone}" | tipo="${messageType}" | texto="${messageText}" | pushName="${pushName}"`);
 
     console.log(`Mensagem de ${phone} (${pushName}): ${messageText}`);
 
@@ -235,25 +203,6 @@ Deno.serve(async (req) => {
       direction: "received",
       timestamp: new Date().toISOString(),
     });
-
-    // Não responder para mídias (áudio, imagem, vídeo, etc.) - só registrar
-    if (messageType !== "text") {
-      console.log(`Mídia (${messageType}) apenas registrada, sem resposta da IA.`);
-      // Ainda atualiza contato
-      const contactsMedia = await base44.asServiceRole.entities.Contact.filter({ phone });
-      if (contactsMedia && contactsMedia.length > 0) {
-        await base44.asServiceRole.entities.Contact.update(contactsMedia[0].id, {
-          last_message: messageText,
-          last_contact_date: new Date().toISOString(),
-        });
-      } else {
-        await base44.asServiceRole.entities.Contact.create({
-          phone, name: pushName, last_message: messageText,
-          last_contact_date: new Date().toISOString(), status: "ativo",
-        });
-      }
-      return Response.json({ status: "ok - media registered only" });
-    }
 
     // Encontrar ou criar contato
     const contacts = await base44.asServiceRole.entities.Contact.filter({ phone });
