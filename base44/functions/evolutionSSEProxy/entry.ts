@@ -6,15 +6,27 @@ const EVOLUTION_URL = Deno.env.get("EVOLUTION_API_URL") || "https://evolution-ap
 const EVOLUTION_KEY = Deno.env.get("EVOLUTION_API_KEY");
 const INSTANCE = Deno.env.get("EVOLUTION_INSTANCE") || "meudelivery";
 
-// Deduplicação: processar cada messageId apenas uma vez por instância
-const processingIds = new Set();
+// Deduplicação: permite apenas UM processamento simultâneo por messageId
+const processingIds = new Map(); // msgId -> Promise resolve function
 
-function markProcessing(msgId) {
-  if (processingIds.has(msgId)) return false;
-  processingIds.add(msgId);
-  // Remover após 5s para evitar memory leak
-  setTimeout(() => processingIds.delete(msgId), 5000);
-  return true;
+async function processOnce(msgId, fn) {
+  if (processingIds.has(msgId)) {
+    // Já está sendo processado, aguardar conclusão
+    const existingPromise = processingIds.get(msgId);
+    await existingPromise;
+    return;
+  }
+
+  let resolvePromise;
+  const promise = new Promise(resolve => { resolvePromise = resolve; });
+  processingIds.set(msgId, promise);
+
+  try {
+    await fn();
+  } finally {
+    processingIds.delete(msgId);
+    resolvePromise();
+  }
 }
 
 function normalizePhone(raw) {
@@ -109,7 +121,7 @@ Deno.serve(async (req) => {
       const msgTimestamp = msgData?.messageTimestamp || Math.floor(Date.now() / 1000);
       const timestamp = new Date(msgTimestamp * 1000).toISOString();
 
-      // Deduplicar: verificar no banco se já existe mensagem com esse messageId
+      // Deduplicar: se tem msgId, nunca criar outra com o mesmo ID
       if (msgId) {
         const existing = await base44.asServiceRole.entities.Message.filter({ whatsapp_message_id: msgId });
         if (existing && existing.length > 0) {
@@ -121,14 +133,24 @@ Deno.serve(async (req) => {
 
       console.log(`[SSE Proxy] Salvando mensagem de ${phone}: ${text}`);
 
-      // Salvar mensagem
-      await base44.asServiceRole.entities.Message.create({
-        contact_phone: phone,
-        text,
-        direction: "received",
-        timestamp,
-        whatsapp_message_id: msgId || null,
-      });
+      // Salvar mensagem — sem msgId duplicado será criado, com msgId será unique
+      try {
+        await base44.asServiceRole.entities.Message.create({
+          contact_phone: phone,
+          text,
+          direction: "received",
+          timestamp,
+          whatsapp_message_id: msgId || null,
+        });
+      } catch (createErr) {
+        // Se falhar por violação de unique (duplicate whatsapp_message_id), ignorar
+        if (msgId && createErr.message?.includes("duplicate")) {
+          console.log(`[SSE Proxy] Duplicata ignorada (unique constraint): ${msgId}`);
+          send("new_message", { phone, text, pushName, timestamp });
+          return;
+        }
+        throw createErr;
+      }
 
       // Criar/atualizar contato
       const contacts = await base44.asServiceRole.entities.Contact.filter({ phone });
@@ -157,7 +179,7 @@ Deno.serve(async (req) => {
     }
   }
 
-  // Escutar eventos — processar apenas uma vez por messageId dentro desta instância
+  // Escutar eventos — garantir que cada messageId é processado apenas uma vez
   const messageEvents = new Set(["MESSAGES_UPSERT", "messages.upsert", `${INSTANCE}:MESSAGES_UPSERT`]);
 
   socket.onAny((event, ...args) => {
@@ -168,13 +190,14 @@ Deno.serve(async (req) => {
       const key = rawData?.data?.key || rawData?.key;
       const msgId = key?.id;
       
-      // Skip se já está sendo processado nesta instância
-      if (msgId && !markProcessing(msgId)) {
-        console.log(`[SSE Proxy] Já processando ${msgId} nesta instância, ignorando`);
-        return;
+      if (msgId) {
+        // Processar apenas uma vez, ignorar duplicatas que chegarem durante o processamento
+        processOnce(msgId, () => processMessage(rawData)).catch(err => {
+          console.error(`[SSE Proxy] Erro em processOnce(${msgId}):`, err);
+        });
+      } else {
+        processMessage(rawData);
       }
-      
-      processMessage(rawData);
     }
   });
 
