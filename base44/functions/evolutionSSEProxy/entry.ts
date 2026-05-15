@@ -66,94 +66,51 @@ Deno.serve(async (req) => {
     send("proxy_status", { status: "error", message: err.message, time: new Date().toISOString() });
   });
 
-  // Processar mensagem recebida
-  async function processMessage(data) {
-    try {
-      const msgData = data?.data || data;
-      const key = msgData?.key || data?.key;
-      const message = msgData?.message || data?.message;
-      const pushName = msgData?.pushName || data?.pushName || msgData?.notifyName || "";
+  // Extrair info básica da mensagem para notificar o frontend (sem salvar — o whatsappWebhook já faz isso)
+  function extractMessageInfo(data) {
+    const msgData = data?.data || data;
+    const key = msgData?.key || data?.key;
+    const message = msgData?.message || data?.message;
+    const pushName = msgData?.pushName || data?.pushName || msgData?.notifyName || "";
 
-      if (!key) return;
-      if (key.fromMe === true) return;
+    if (!key || key.fromMe === true) return null;
 
-      const phoneRaw = key?.remoteJidAlt || (key?.remoteJid?.includes("@lid") ? null : key?.remoteJid) || "";
-      if (!phoneRaw || phoneRaw.includes("@g.us")) return;
+    const phoneRaw = key?.remoteJidAlt || (key?.remoteJid?.includes("@lid") ? null : key?.remoteJid) || "";
+    if (!phoneRaw || phoneRaw.includes("@g.us")) return null;
 
-      const phone = normalizePhone(phoneRaw);
-      if (!phone) return;
+    const phone = normalizePhone(phoneRaw);
+    if (!phone) return null;
 
-      const text =
-        message?.conversation ||
-        message?.extendedTextMessage?.text ||
-        message?.imageMessage?.caption ||
-        message?.videoMessage?.caption ||
-        message?.audioMessage?.caption ||
-        msgData?.body || data?.body || "";
+    const text =
+      message?.conversation ||
+      message?.extendedTextMessage?.text ||
+      message?.imageMessage?.caption ||
+      message?.videoMessage?.caption ||
+      message?.audioMessage?.caption ||
+      msgData?.body || data?.body || "";
 
-      if (!text) return;
+    if (!text) return null;
 
-      const timestamp = msgData?.messageTimestamp
-        ? new Date(msgData.messageTimestamp * 1000).toISOString()
-        : new Date().toISOString();
+    const timestamp = msgData?.messageTimestamp
+      ? new Date(msgData.messageTimestamp * 1000).toISOString()
+      : new Date().toISOString();
 
-      console.log(`[SSE Proxy] Mensagem de ${phone}: ${text}`);
-
-      // Salvar mensagem
-      await base44.asServiceRole.entities.Message.create({
-        contact_phone: phone,
-        text,
-        direction: "received",
-        timestamp,
-      });
-
-      // Criar/atualizar contato
-      const contacts = await base44.asServiceRole.entities.Contact.filter({ phone });
-      if (contacts && contacts.length > 0) {
-        await base44.asServiceRole.entities.Contact.update(contacts[0].id, {
-          last_message: text,
-          last_contact_date: timestamp,
-          name: contacts[0].name || pushName,
-        });
-      } else {
-        await base44.asServiceRole.entities.Contact.create({
-          phone,
-          name: pushName,
-          last_message: text,
-          last_contact_date: timestamp,
-          status: "ativo",
-        });
-      }
-
-      // Enviar evento ao frontend
-      send("new_message", { phone, text, pushName, timestamp });
-      console.log(`[SSE Proxy] Evento new_message enviado ao frontend para ${phone}`);
-
-    } catch (err) {
-      console.error("[SSE Proxy] Erro ao processar mensagem:", err);
-    }
+    return { phone, text, pushName, timestamp };
   }
 
-  // Escutar eventos de mensagem
-  socket.on("MESSAGES_UPSERT", (data) => {
-    send("raw_event", { event: "MESSAGES_UPSERT", data, time: new Date().toISOString() });
-    processMessage(data);
-  });
-
-  socket.on("messages.upsert", (data) => {
-    send("raw_event", { event: "messages.upsert", data, time: new Date().toISOString() });
-    processMessage(data);
-  });
-
-  socket.on(`${INSTANCE}:MESSAGES_UPSERT`, (data) => {
-    send("raw_event", { event: `${INSTANCE}:MESSAGES_UPSERT`, data, time: new Date().toISOString() });
-    processMessage(data);
-  });
-
-  // onAny para debug — envia todos os outros eventos
+  // Escutar APENAS MESSAGES_UPSERT para evitar duplicação
   socket.onAny((event, ...args) => {
-    if (!["MESSAGES_UPSERT", "messages.upsert", `${INSTANCE}:MESSAGES_UPSERT`].includes(event)) {
-      send("raw_event", { event, data: args[0], time: new Date().toISOString() });
+    const rawData = args[0];
+    // Enviar evento bruto para debug
+    send("raw_event", { event, data: rawData, time: new Date().toISOString() });
+
+    // Notificar frontend apenas em eventos de mensagem recebida (sem salvar no DB)
+    if (event === "MESSAGES_UPSERT" || event === "messages.upsert" || event === `${INSTANCE}:MESSAGES_UPSERT`) {
+      const info = extractMessageInfo(rawData);
+      if (info) {
+        send("new_message", info);
+        console.log(`[SSE Proxy] Evento new_message enviado ao frontend para ${info.phone}`);
+      }
     }
   });
 
