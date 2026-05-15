@@ -14,6 +14,8 @@ let globalES = null;
 let globalListeners = new Set();
 let globalStatus = "disconnected";
 let globalLogs = [];
+let reconnectTimeout = null;
+let reconnectAttempts = 0;
 const statusListeners = new Set();
 const logsListeners = new Set();
 
@@ -44,6 +46,8 @@ function ensureConnected() {
   globalES = es;
 
   es.onopen = () => {
+    reconnectAttempts = 0;
+    if (reconnectTimeout) clearTimeout(reconnectTimeout);
     addGlobalLog("info", "SSE aberto", { msg: "aguardando proxy conectar ao socket.io..." });
   };
 
@@ -66,11 +70,13 @@ function ensureConnected() {
   });
 
   es.onerror = () => {
-    addGlobalLog("error", "SSE erro", { msg: "Conexão perdida, reconectando em 5s..." });
+    addGlobalLog("error", "SSE erro", { msg: `Reconectando em ${Math.min(30000, 1000 * Math.pow(2, reconnectAttempts))}ms...` });
     notifyStatus("error");
     es.close();
     globalES = null;
-    setTimeout(ensureConnected, 5000);
+    reconnectAttempts++;
+    if (reconnectTimeout) clearTimeout(reconnectTimeout);
+    reconnectTimeout = setTimeout(ensureConnected, Math.min(30000, 1000 * Math.pow(2, reconnectAttempts)));
   };
 }
 
