@@ -29,6 +29,7 @@ export default function Chat() {
   const { data: contacts = [], isLoading } = useQuery({
     queryKey: ["contacts"],
     queryFn: () => base44.entities.Contact.list("-last_contact_date"),
+    refetchInterval: 30000,
   });
 
   const { data: allMessages = [], refetch: refetchMessages } = useQuery({
@@ -38,7 +39,7 @@ export default function Chat() {
         ? base44.entities.Message.filter({ contact_phone: selectedContact.phone }, "timestamp", 100)
         : [],
     enabled: !!selectedContact,
-    staleTime: Infinity,
+    refetchInterval: 30000,
   });
 
   const scrollToBottom = () => {
@@ -67,22 +68,14 @@ export default function Chat() {
     setSending(true);
 
     try {
-      const response = await base44.functions.invoke("sendWhatsAppMessage", {
+      await base44.functions.invoke("sendWhatsAppMessage", {
         phone: selectedContact.phone,
         message: text,
       });
-      
-      if (!response?.data?.success) {
-        console.error("Falha ao enviar:", response?.data?.error);
-        setMessage(text); // Restaura mensagem se falhar
-        return;
-      }
-      
       refetchMessages();
       queryClient.invalidateQueries({ queryKey: ["contacts"] });
     } catch (e) {
-      console.error("Erro ao enviar mensagem:", e);
-      setMessage(text); // Restaura mensagem se falhar
+      console.error(e);
     } finally {
       setSending(false);
     }

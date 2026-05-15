@@ -176,48 +176,16 @@ Deno.serve(async (req) => {
       phone = phone.slice(0, 4) + "9" + phone.slice(4);
     }
     const pushName = data?.pushName || data?.notifyName || "";
-    let messageText = message?.conversation
+    const messageText = message?.conversation
       || message?.extendedTextMessage?.text
       || message?.imageMessage?.caption
       || message?.videoMessage?.caption
+      || message?.audioMessage?.caption
       || message?.documentMessage?.caption
       || message?.stickerMessage?.caption
       || data?.body
       || body?.body
       || "";
-
-    // Transcrever áudio se não há texto
-    if (!messageText && message?.audioMessage) {
-      try {
-        // Buscar base64 do áudio via Evolution API
-        const mediaRes = await fetch(`${EVOLUTION_API_URL}/chat/getBase64FromMediaMessage/${EVOLUTION_INSTANCE}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "apikey": EVOLUTION_API_KEY },
-          body: JSON.stringify({ message: { key: data?.key }, convertToMp4: false }),
-        });
-        const mediaJson = await mediaRes.json();
-        const base64 = mediaJson?.base64 || mediaJson?.data;
-        if (base64) {
-          const mimeType = mediaJson?.mimetype || "audio/ogg";
-          const ext = mimeType.includes("mp4") ? "mp4" : mimeType.includes("mp3") ? "mp3" : "ogg";
-          // Converter base64 para Uint8Array e criar Blob
-          const binaryStr = atob(base64);
-          const bytes = new Uint8Array(binaryStr.length);
-          for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
-          const audioBlob = new Blob([bytes], { type: mimeType });
-          // Upload para Base44 e transcrever
-          const { file_url } = await base44.asServiceRole.integrations.Core.UploadFile({ file: audioBlob });
-          const transcript = await base44.asServiceRole.integrations.Core.TranscribeAudio({ audio_url: file_url });
-          if (transcript) {
-            messageText = `[Áudio] ${transcript}`;
-            console.log(`Áudio transcrito de ${phone}: ${messageText}`);
-          }
-        }
-      } catch (err) {
-        console.error("Erro ao transcrever áudio:", err.message);
-        messageText = "[Áudio recebido - não foi possível transcrever]";
-      }
-    }
 
     console.log(`phone="${phone}" | texto="${messageText}" | pushName="${pushName}"`);
 
@@ -228,7 +196,14 @@ Deno.serve(async (req) => {
 
     console.log(`Mensagem de ${phone} (${pushName}): ${messageText}`);
 
-    // NOTA: Mensagem já foi salva pelo SSE Proxy, apenas garantir que contato existe
+    // Salvar mensagem recebida no histórico
+    await base44.asServiceRole.entities.Message.create({
+      contact_phone: phone,
+      text: messageText,
+      direction: "received",
+      timestamp: new Date().toISOString(),
+    });
+
     // Encontrar ou criar contato
     const contacts = await base44.asServiceRole.entities.Contact.filter({ phone });
     let contact;

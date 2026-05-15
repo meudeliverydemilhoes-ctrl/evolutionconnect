@@ -1,13 +1,9 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import { io } from 'npm:socket.io-client@4.8.1';
 
-
 const EVOLUTION_URL = Deno.env.get("EVOLUTION_API_URL") || "https://evolution-api-production-36e1.up.railway.app";
 const EVOLUTION_KEY = Deno.env.get("EVOLUTION_API_KEY");
 const INSTANCE = Deno.env.get("EVOLUTION_INSTANCE") || "meudelivery";
-
-// Deduplicação: rastreia quais messageIds estão sendo processados
-const processingIds = new Map(); // msgId -> Promise
 
 function normalizePhone(raw) {
   if (!raw) return null;
@@ -70,7 +66,10 @@ Deno.serve(async (req) => {
     send("proxy_status", { status: "error", message: err.message, time: new Date().toISOString() });
   });
 
-  // Processa mensagem: salva no banco e notifica frontend com deduplicação por messageId
+  // Cache de deduplicação (messageId ou timestamp+phone)
+  const processedIds = new Set();
+
+  // Processar mensagem recebida
   async function processMessage(data) {
     try {
       const msgData = data?.data || data;
@@ -97,40 +96,31 @@ Deno.serve(async (req) => {
 
       if (!text) return;
 
-      const msgId = key?.id;
       const msgTimestamp = msgData?.messageTimestamp || Math.floor(Date.now() / 1000);
+      const dedupeKey = `${phone}_${msgTimestamp}_${text.slice(0, 20)}`;
+
+      if (processedIds.has(dedupeKey)) {
+        console.log(`[SSE Proxy] Mensagem duplicada ignorada para ${phone}`);
+        return;
+      }
+      processedIds.add(dedupeKey);
+      // Limpar cache antigo (manter só últimos 100)
+      if (processedIds.size > 100) {
+        const first = processedIds.values().next().value;
+        processedIds.delete(first);
+      }
+
       const timestamp = new Date(msgTimestamp * 1000).toISOString();
 
-      // Deduplicar: se tem msgId, nunca criar outra com o mesmo ID
-      if (msgId) {
-        const existing = await base44.asServiceRole.entities.Message.filter({ whatsapp_message_id: msgId });
-        if (existing && existing.length > 0) {
-          console.log(`[SSE Proxy] Duplicata ignorada (já no banco): ${msgId}`);
-          send("new_message", { phone, text, pushName, timestamp });
-          return;
-        }
-      }
+      console.log(`[SSE Proxy] Mensagem de ${phone}: ${text}`);
 
-      console.log(`[SSE Proxy] Salvando mensagem de ${phone}: ${text}`);
-
-      // Salvar mensagem — sem msgId duplicado será criado, com msgId será unique
-      try {
-        await base44.asServiceRole.entities.Message.create({
-          contact_phone: phone,
-          text,
-          direction: "received",
-          timestamp,
-          whatsapp_message_id: msgId || null,
-        });
-      } catch (createErr) {
-        // Se falhar por violação de unique (duplicate whatsapp_message_id), ignorar
-        if (msgId && createErr.message?.includes("duplicate")) {
-          console.log(`[SSE Proxy] Duplicata ignorada (unique constraint): ${msgId}`);
-          send("new_message", { phone, text, pushName, timestamp });
-          return;
-        }
-        throw createErr;
-      }
+      // Salvar mensagem
+      await base44.asServiceRole.entities.Message.create({
+        contact_phone: phone,
+        text,
+        direction: "received",
+        timestamp,
+      });
 
       // Criar/atualizar contato
       const contacts = await base44.asServiceRole.entities.Contact.filter({ phone });
@@ -150,16 +140,16 @@ Deno.serve(async (req) => {
         });
       }
 
-      // Notificar frontend
+      // Enviar evento ao frontend
       send("new_message", { phone, text, pushName, timestamp });
-      console.log(`[SSE Proxy] Notificado frontend: ${phone}`);
+      console.log(`[SSE Proxy] Evento new_message enviado ao frontend para ${phone}`);
 
     } catch (err) {
       console.error("[SSE Proxy] Erro ao processar mensagem:", err);
     }
   }
 
-  // Escutar eventos — garantir que cada messageId é processado apenas uma vez
+  // Escutar eventos — usar onAny mas processar mensagem apenas uma vez por evento único
   const messageEvents = new Set(["MESSAGES_UPSERT", "messages.upsert", `${INSTANCE}:MESSAGES_UPSERT`]);
 
   socket.onAny((event, ...args) => {
@@ -167,39 +157,7 @@ Deno.serve(async (req) => {
     send("raw_event", { event, data: rawData, time: new Date().toISOString() });
 
     if (messageEvents.has(event)) {
-      const key = rawData?.data?.key || rawData?.key;
-      const msgId = key?.id;
-      
-      if (!msgId) {
-        console.log(`[SSE Proxy] Evento sem msgId, processando normalmente`);
-        processMessage(rawData);
-        return;
-      }
-      
-      // Se já está processando, pular (não aguardar)
-      if (processingIds.has(msgId)) {
-        console.log(`[SSE Proxy] Evento ${event} com msgId=${msgId} já está sendo processado, ignorando`);
-        return;
-      }
-      
-      // Marcar como processando e executar
-      let resolvePromise;
-      const promise = new Promise(resolve => { resolvePromise = resolve; });
-      processingIds.set(msgId, promise);
-      
-      console.log(`[SSE Proxy] Evento ${event} com msgId=${msgId} iniciando processamento`);
-      
-      processMessage(rawData)
-        .then(() => {
-          console.log(`[SSE Proxy] Evento msgId=${msgId} finalizado com sucesso`);
-        })
-        .catch(err => {
-          console.error(`[SSE Proxy] Erro ao processar msgId=${msgId}:`, err);
-        })
-        .finally(() => {
-          processingIds.delete(msgId);
-          resolvePromise();
-        });
+      processMessage(rawData);
     }
   });
 
