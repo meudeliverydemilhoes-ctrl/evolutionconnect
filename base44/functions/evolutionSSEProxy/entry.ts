@@ -66,19 +66,15 @@ Deno.serve(async (req) => {
     send("proxy_status", { status: "error", message: err.message, time: new Date().toISOString() });
   });
 
-  // Cache de deduplicação (messageId ou timestamp+phone)
-  const processedIds = new Set();
-
-  // Processar mensagem recebida
-  async function processMessage(data) {
+  // Apenas enviar evento para frontend (não salvar — deixar para o whatsappWebhook via HTTP)
+  async function notifyMessage(data) {
     try {
       const msgData = data?.data || data;
       const key = msgData?.key || data?.key;
       const message = msgData?.message || data?.message;
       const pushName = msgData?.pushName || data?.pushName || msgData?.notifyName || "";
 
-      if (!key) return;
-      if (key.fromMe === true) return;
+      if (!key || key.fromMe === true) return;
 
       const phoneRaw = key?.remoteJidAlt || (key?.remoteJid?.includes("@lid") ? null : key?.remoteJid) || "";
       if (!phoneRaw || phoneRaw.includes("@g.us")) return;
@@ -96,69 +92,25 @@ Deno.serve(async (req) => {
 
       if (!text) return;
 
-      const msgTimestamp = msgData?.messageTimestamp || Math.floor(Date.now() / 1000);
-      const dedupeKey = `${phone}_${msgTimestamp}_${text.slice(0, 20)}`;
-
-      if (processedIds.has(dedupeKey)) {
-        console.log(`[SSE Proxy] Mensagem duplicada ignorada para ${phone}`);
-        return;
-      }
-      processedIds.add(dedupeKey);
-      // Limpar cache antigo (manter só últimos 100)
-      if (processedIds.size > 100) {
-        const first = processedIds.values().next().value;
-        processedIds.delete(first);
-      }
-
-      const timestamp = new Date(msgTimestamp * 1000).toISOString();
+      const timestamp = msgData?.messageTimestamp
+        ? new Date(msgData.messageTimestamp * 1000).toISOString()
+        : new Date().toISOString();
 
       console.log(`[SSE Proxy] Mensagem de ${phone}: ${text}`);
 
-      // Salvar mensagem
-      await base44.asServiceRole.entities.Message.create({
-        contact_phone: phone,
-        text,
-        direction: "received",
-        timestamp,
-      });
-
-      // Criar/atualizar contato
-      const contacts = await base44.asServiceRole.entities.Contact.filter({ phone });
-      if (contacts && contacts.length > 0) {
-        await base44.asServiceRole.entities.Contact.update(contacts[0].id, {
-          last_message: text,
-          last_contact_date: timestamp,
-          name: contacts[0].name || pushName,
-        });
-      } else {
-        await base44.asServiceRole.entities.Contact.create({
-          phone,
-          name: pushName,
-          last_message: text,
-          last_contact_date: timestamp,
-          status: "ativo",
-        });
-      }
-
-      // Enviar evento ao frontend
+      // Apenas notificar frontend — whatsappWebhook salva no DB via webhook HTTP
       send("new_message", { phone, text, pushName, timestamp });
       console.log(`[SSE Proxy] Evento new_message enviado ao frontend para ${phone}`);
 
     } catch (err) {
-      console.error("[SSE Proxy] Erro ao processar mensagem:", err);
+      console.error("[SSE Proxy] Erro ao notificar mensagem:", err);
     }
   }
 
-  // Escutar eventos — usar onAny mas processar mensagem apenas uma vez por evento único
-  const messageEvents = new Set(["MESSAGES_UPSERT", "messages.upsert", `${INSTANCE}:MESSAGES_UPSERT`]);
-
-  socket.onAny((event, ...args) => {
-    const rawData = args[0];
-    send("raw_event", { event, data: rawData, time: new Date().toISOString() });
-
-    if (messageEvents.has(event)) {
-      processMessage(rawData);
-    }
+  // Escutar eventos de mensagem
+  socket.on("MESSAGES_UPSERT", (data) => {
+    send("raw_event", { event: "MESSAGES_UPSERT", data, time: new Date().toISOString() });
+    notifyMessage(data);
   });
 
   // Cleanup ao fechar conexão SSE
