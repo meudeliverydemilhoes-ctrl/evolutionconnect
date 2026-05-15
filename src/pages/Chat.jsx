@@ -38,6 +38,7 @@ export default function Chat() {
         ? base44.entities.Message.filter({ contact_phone: selectedContact.phone }, "timestamp", 100)
         : [],
     enabled: !!selectedContact,
+    staleTime: Infinity,
   });
 
   const scrollToBottom = () => {
