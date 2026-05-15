@@ -69,9 +69,8 @@ Deno.serve(async (req) => {
     send("proxy_status", { status: "error", message: err.message, time: new Date().toISOString() });
   });
 
-  // Processar mensagem recebida — apenas notifica o frontend, SEM salvar no banco
-  // (quem salva é o whatsappWebhook via webhook da Evolution)
-  function processMessage(data) {
+  // Processar mensagem recebida — salva no banco e notifica o frontend
+  async function processMessage(data) {
     try {
       const msgData = data?.data || data;
       const key = msgData?.key || data?.key;
@@ -97,8 +96,10 @@ Deno.serve(async (req) => {
 
       if (!text) return;
 
+      // Usar messageId da Evolution para deduplicação precisa
+      const msgId = key?.id || null;
       const msgTimestamp = msgData?.messageTimestamp || Math.floor(Date.now() / 1000);
-      const dedupeKey = `${phone}_${msgTimestamp}_${text.slice(0, 20)}`;
+      const dedupeKey = msgId || `${phone}_${msgTimestamp}_${text.slice(0, 30)}`;
 
       // Deduplicação global — bloqueia entre múltiplas conexões SSE simultâneas
       if (globalProcessed.has(dedupeKey)) {
@@ -106,16 +107,43 @@ Deno.serve(async (req) => {
         return;
       }
       globalProcessed.add(dedupeKey);
-      if (globalProcessed.size > 200) {
+      if (globalProcessed.size > 500) {
         const first = globalProcessed.values().next().value;
         globalProcessed.delete(first);
       }
 
       const timestamp = new Date(msgTimestamp * 1000).toISOString();
-      console.log(`[SSE Proxy] Notificando frontend: ${phone}`);
+      console.log(`[SSE Proxy] Mensagem de ${phone}: ${text}`);
 
-      // Apenas notifica o frontend — banco é gerenciado pelo whatsappWebhook
+      // Salvar mensagem
+      await base44.asServiceRole.entities.Message.create({
+        contact_phone: phone,
+        text,
+        direction: "received",
+        timestamp,
+      });
+
+      // Criar/atualizar contato
+      const contacts = await base44.asServiceRole.entities.Contact.filter({ phone });
+      if (contacts && contacts.length > 0) {
+        await base44.asServiceRole.entities.Contact.update(contacts[0].id, {
+          last_message: text,
+          last_contact_date: timestamp,
+          name: contacts[0].name || pushName,
+        });
+      } else {
+        await base44.asServiceRole.entities.Contact.create({
+          phone,
+          name: pushName,
+          last_message: text,
+          last_contact_date: timestamp,
+          status: "ativo",
+        });
+      }
+
+      // Notificar frontend
       send("new_message", { phone, text, pushName, timestamp });
+      console.log(`[SSE Proxy] Evento new_message enviado ao frontend para ${phone}`);
 
     } catch (err) {
       console.error("[SSE Proxy] Erro ao processar mensagem:", err);
