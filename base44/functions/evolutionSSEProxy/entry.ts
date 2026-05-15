@@ -66,51 +66,98 @@ Deno.serve(async (req) => {
     send("proxy_status", { status: "error", message: err.message, time: new Date().toISOString() });
   });
 
-  // Extrair info básica da mensagem para notificar o frontend (sem salvar — o whatsappWebhook já faz isso)
-  function extractMessageInfo(data) {
-    const msgData = data?.data || data;
-    const key = msgData?.key || data?.key;
-    const message = msgData?.message || data?.message;
-    const pushName = msgData?.pushName || data?.pushName || msgData?.notifyName || "";
+  // Cache de deduplicação (messageId ou timestamp+phone)
+  const processedIds = new Set();
 
-    if (!key || key.fromMe === true) return null;
+  // Processar mensagem recebida
+  async function processMessage(data) {
+    try {
+      const msgData = data?.data || data;
+      const key = msgData?.key || data?.key;
+      const message = msgData?.message || data?.message;
+      const pushName = msgData?.pushName || data?.pushName || msgData?.notifyName || "";
 
-    const phoneRaw = key?.remoteJidAlt || (key?.remoteJid?.includes("@lid") ? null : key?.remoteJid) || "";
-    if (!phoneRaw || phoneRaw.includes("@g.us")) return null;
+      if (!key) return;
+      if (key.fromMe === true) return;
 
-    const phone = normalizePhone(phoneRaw);
-    if (!phone) return null;
+      const phoneRaw = key?.remoteJidAlt || (key?.remoteJid?.includes("@lid") ? null : key?.remoteJid) || "";
+      if (!phoneRaw || phoneRaw.includes("@g.us")) return;
 
-    const text =
-      message?.conversation ||
-      message?.extendedTextMessage?.text ||
-      message?.imageMessage?.caption ||
-      message?.videoMessage?.caption ||
-      message?.audioMessage?.caption ||
-      msgData?.body || data?.body || "";
+      const phone = normalizePhone(phoneRaw);
+      if (!phone) return;
 
-    if (!text) return null;
+      const text =
+        message?.conversation ||
+        message?.extendedTextMessage?.text ||
+        message?.imageMessage?.caption ||
+        message?.videoMessage?.caption ||
+        message?.audioMessage?.caption ||
+        msgData?.body || data?.body || "";
 
-    const timestamp = msgData?.messageTimestamp
-      ? new Date(msgData.messageTimestamp * 1000).toISOString()
-      : new Date().toISOString();
+      if (!text) return;
 
-    return { phone, text, pushName, timestamp };
+      const msgTimestamp = msgData?.messageTimestamp || Math.floor(Date.now() / 1000);
+      const dedupeKey = `${phone}_${msgTimestamp}_${text.slice(0, 20)}`;
+
+      if (processedIds.has(dedupeKey)) {
+        console.log(`[SSE Proxy] Mensagem duplicada ignorada para ${phone}`);
+        return;
+      }
+      processedIds.add(dedupeKey);
+      // Limpar cache antigo (manter só últimos 100)
+      if (processedIds.size > 100) {
+        const first = processedIds.values().next().value;
+        processedIds.delete(first);
+      }
+
+      const timestamp = new Date(msgTimestamp * 1000).toISOString();
+
+      console.log(`[SSE Proxy] Mensagem de ${phone}: ${text}`);
+
+      // Salvar mensagem
+      await base44.asServiceRole.entities.Message.create({
+        contact_phone: phone,
+        text,
+        direction: "received",
+        timestamp,
+      });
+
+      // Criar/atualizar contato
+      const contacts = await base44.asServiceRole.entities.Contact.filter({ phone });
+      if (contacts && contacts.length > 0) {
+        await base44.asServiceRole.entities.Contact.update(contacts[0].id, {
+          last_message: text,
+          last_contact_date: timestamp,
+          name: contacts[0].name || pushName,
+        });
+      } else {
+        await base44.asServiceRole.entities.Contact.create({
+          phone,
+          name: pushName,
+          last_message: text,
+          last_contact_date: timestamp,
+          status: "ativo",
+        });
+      }
+
+      // Enviar evento ao frontend
+      send("new_message", { phone, text, pushName, timestamp });
+      console.log(`[SSE Proxy] Evento new_message enviado ao frontend para ${phone}`);
+
+    } catch (err) {
+      console.error("[SSE Proxy] Erro ao processar mensagem:", err);
+    }
   }
 
-  // Escutar APENAS MESSAGES_UPSERT para evitar duplicação
+  // Escutar eventos — usar onAny mas processar mensagem apenas uma vez por evento único
+  const messageEvents = new Set(["MESSAGES_UPSERT", "messages.upsert", `${INSTANCE}:MESSAGES_UPSERT`]);
+
   socket.onAny((event, ...args) => {
     const rawData = args[0];
-    // Enviar evento bruto para debug
     send("raw_event", { event, data: rawData, time: new Date().toISOString() });
 
-    // Notificar frontend apenas em eventos de mensagem recebida (sem salvar no DB)
-    if (event === "MESSAGES_UPSERT" || event === "messages.upsert" || event === `${INSTANCE}:MESSAGES_UPSERT`) {
-      const info = extractMessageInfo(rawData);
-      if (info) {
-        send("new_message", info);
-        console.log(`[SSE Proxy] Evento new_message enviado ao frontend para ${info.phone}`);
-      }
+    if (messageEvents.has(event)) {
+      processMessage(rawData);
     }
   });
 
