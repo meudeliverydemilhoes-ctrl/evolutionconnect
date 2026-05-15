@@ -66,8 +66,11 @@ Deno.serve(async (req) => {
     send("proxy_status", { status: "error", message: err.message, time: new Date().toISOString() });
   });
 
-  // Notificar frontend (sem salvar — whatsappWebhook salva via HTTP)
-  function notifyMessage(data) {
+  // Cache de deduplicação simples
+  const recentMessages = new Map();
+
+  // Processar mensagem com debounce
+  async function processMessage(data) {
     try {
       const msgData = data?.data || data;
       const key = msgData?.key || data?.key;
@@ -92,25 +95,74 @@ Deno.serve(async (req) => {
 
       if (!text) return;
 
+      // Deduplicação por timestamp + phone + text
+      const msgTs = msgData?.messageTimestamp || Math.floor(Date.now() / 1000);
+      const dedupeKey = `${phone}_${msgTs}_${text.slice(0, 20)}`;
+      
+      if (recentMessages.has(dedupeKey)) {
+        console.log(`[SSE Proxy] Duplicata ignorada: ${dedupeKey}`);
+        return;
+      }
+      recentMessages.set(dedupeKey, true);
+      // Limpar cache antigo
+      if (recentMessages.size > 50) {
+        const first = recentMessages.keys().next().value;
+        recentMessages.delete(first);
+      }
+
       const timestamp = msgData?.messageTimestamp
         ? new Date(msgData.messageTimestamp * 1000).toISOString()
         : new Date().toISOString();
 
       console.log(`[SSE Proxy] Mensagem de ${phone}: ${text}`);
 
-      // Apenas notificar frontend
+      // Salvar mensagem com retry
+      let retries = 3;
+      while (retries > 0) {
+        try {
+          await base44.asServiceRole.entities.Message.create({
+            contact_phone: phone,
+            text,
+            direction: "received",
+            timestamp,
+          });
+          break;
+        } catch (err) {
+          retries--;
+          if (retries > 0) await new Promise(r => setTimeout(r, 500));
+        }
+      }
+
+      // Atualizar contato
+      const contacts = await base44.asServiceRole.entities.Contact.filter({ phone });
+      if (contacts?.length > 0) {
+        await base44.asServiceRole.entities.Contact.update(contacts[0].id, {
+          last_message: text,
+          last_contact_date: timestamp,
+          name: contacts[0].name || pushName,
+        });
+      } else {
+        await base44.asServiceRole.entities.Contact.create({
+          phone,
+          name: pushName,
+          last_message: text,
+          last_contact_date: timestamp,
+          status: "ativo",
+        });
+      }
+
       send("new_message", { phone, text, pushName, timestamp });
-      console.log(`[SSE Proxy] Evento new_message enviado ao frontend para ${phone}`);
+      console.log(`[SSE Proxy] Mensagem salva e notificada para ${phone}`);
 
     } catch (err) {
-      console.error("[SSE Proxy] Erro ao notificar mensagem:", err);
+      console.error("[SSE Proxy] Erro ao processar mensagem:", err);
     }
   }
 
   // Escutar eventos de mensagem
   socket.on("MESSAGES_UPSERT", (data) => {
     send("raw_event", { event: "MESSAGES_UPSERT", data, time: new Date().toISOString() });
-    notifyMessage(data);
+    processMessage(data);
   });
 
   // onAny para debug — envia todos os outros eventos
