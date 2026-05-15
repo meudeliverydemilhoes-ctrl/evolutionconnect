@@ -67,14 +67,22 @@ export default function Chat() {
     setSending(true);
 
     try {
-      await base44.functions.invoke("sendWhatsAppMessage", {
+      const response = await base44.functions.invoke("sendWhatsAppMessage", {
         phone: selectedContact.phone,
         message: text,
       });
+      
+      if (!response?.data?.success) {
+        console.error("Falha ao enviar:", response?.data?.error);
+        setMessage(text); // Restaura mensagem se falhar
+        return;
+      }
+      
       refetchMessages();
       queryClient.invalidateQueries({ queryKey: ["contacts"] });
     } catch (e) {
-      console.error(e);
+      console.error("Erro ao enviar mensagem:", e);
+      setMessage(text); // Restaura mensagem se falhar
     } finally {
       setSending(false);
     }
