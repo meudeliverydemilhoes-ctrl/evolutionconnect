@@ -176,23 +176,55 @@ Deno.serve(async (req) => {
       phone = phone.slice(0, 4) + "9" + phone.slice(4);
     }
     const pushName = data?.pushName || data?.notifyName || "";
-    const messageText = message?.conversation
-      || message?.extendedTextMessage?.text
-      || message?.imageMessage?.caption
-      || message?.videoMessage?.caption
-      || message?.audioMessage?.caption
-      || message?.documentMessage?.caption
-      || message?.stickerMessage?.caption
-      || data?.body
-      || body?.body
-      || "";
 
-    console.log(`phone="${phone}" | texto="${messageText}" | pushName="${pushName}"`);
+    // Detectar tipo de mídia e extrair texto/descrição
+    let messageText = "";
+    let messageType = "text";
 
-    if (!phone || !messageText) {
-      console.log("Ignorado: sem telefone ou texto. remoteJid:", phoneRaw, "| messageKeys:", Object.keys(message || {}));
-      return Response.json({ status: "ignored - no content" });
+    if (message?.conversation || message?.extendedTextMessage?.text) {
+      messageText = message.conversation || message.extendedTextMessage.text;
+      messageType = "text";
+    } else if (message?.audioMessage) {
+      messageText = message.audioMessage.caption || "🎵 Áudio";
+      messageType = "audio";
+    } else if (message?.imageMessage) {
+      messageText = message.imageMessage.caption || "📷 Imagem";
+      messageType = "image";
+    } else if (message?.videoMessage) {
+      messageText = message.videoMessage.caption || "🎬 Vídeo";
+      messageType = "video";
+    } else if (message?.documentMessage) {
+      const filename = message.documentMessage.fileName || "documento";
+      messageText = message.documentMessage.caption || `📄 Documento: ${filename}`;
+      messageType = "document";
+    } else if (message?.stickerMessage) {
+      messageText = "🩷 Sticker";
+      messageType = "sticker";
+    } else if (message?.contactMessage) {
+      const contactName = message.contactMessage.displayName || "";
+      const vcard = message.contactMessage.vcard || "";
+      const phoneMatch = vcard.match(/TEL[^:]*:([^\r\n]+)/);
+      const contactPhone = phoneMatch ? phoneMatch[1].replace(/\D/g, "") : "";
+      messageText = `👤 Contato: ${contactName}${contactPhone ? ` (${contactPhone})` : ""}`;
+      messageType = "contact";
+    } else if (message?.contactsArrayMessage) {
+      const names = (message.contactsArrayMessage.contacts || []).map(c => c.displayName).join(", ");
+      messageText = `👥 Contatos: ${names}`;
+      messageType = "contact";
+    } else if (message?.locationMessage) {
+      const lat = message.locationMessage.degreesLatitude;
+      const lng = message.locationMessage.degreesLongitude;
+      messageText = `📍 Localização: ${lat},${lng}`;
+      messageType = "location";
+    } else {
+      messageText = data?.body || body?.body || "";
+      if (!messageText) {
+        console.log("Ignorado: sem conteúdo reconhecível. messageKeys:", Object.keys(message || {}));
+        return Response.json({ status: "ignored - no content" });
+      }
     }
+
+    console.log(`phone="${phone}" | tipo="${messageType}" | texto="${messageText}" | pushName="${pushName}"`);
 
     console.log(`Mensagem de ${phone} (${pushName}): ${messageText}`);
 

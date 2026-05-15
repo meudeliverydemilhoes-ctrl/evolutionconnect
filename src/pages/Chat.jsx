@@ -4,7 +4,7 @@ import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Send, Search, MessageCircle, Phone, RefreshCw, Wifi, WifiOff } from "lucide-react";
+import { Send, Search, MessageCircle, Phone, RefreshCw, Wifi, WifiOff, Mic, FileText, Image, Video, MapPin, User, Users } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useEvolutionSSE } from "@/hooks/useEvolutionSSE";
@@ -197,21 +197,31 @@ export default function Chat() {
                   <p className="text-xs mt-1">Envie uma mensagem para começar.</p>
                 </div>
               )}
-              {allMessages.map((msg, i) => (
-                <div key={msg.id || i} className={`flex ${msg.direction === "sent" ? "justify-end" : "justify-start"}`}>
-                  <div className={`max-w-xs lg:max-w-md px-3 py-2 rounded-lg text-sm shadow-sm relative ${
-                    msg.direction === "sent"
-                      ? "bg-[#d9fdd3] text-[#111b21] rounded-tr-none"
-                      : "bg-white text-[#111b21] rounded-tl-none"
-                  }`}>
-                    <p className="whitespace-pre-wrap">{msg.text}</p>
-                    <p className="text-[10px] text-[#667781] mt-1 text-right">
-                      {msg.timestamp ? format(new Date(msg.timestamp), "HH:mm") : ""}
-                      {msg.direction === "sent" && <span className="ml-1 text-[#53bdeb]">✓✓</span>}
-                    </p>
+              {allMessages.map((msg, i) => {
+                const isMedia = msg.text?.startsWith("🎵") || msg.text?.startsWith("📷") ||
+                  msg.text?.startsWith("🎬") || msg.text?.startsWith("📄") ||
+                  msg.text?.startsWith("👤") || msg.text?.startsWith("👥") ||
+                  msg.text?.startsWith("📍") || msg.text?.startsWith("🩷");
+                return (
+                  <div key={msg.id || i} className={`flex ${msg.direction === "sent" ? "justify-end" : "justify-start"}`}>
+                    <div className={`max-w-xs lg:max-w-md px-3 py-2 rounded-lg text-sm shadow-sm relative ${
+                      msg.direction === "sent"
+                        ? "bg-[#d9fdd3] text-[#111b21] rounded-tr-none"
+                        : "bg-white text-[#111b21] rounded-tl-none"
+                    }`}>
+                      {isMedia ? (
+                        <p className="whitespace-pre-wrap text-[#667781] italic">{msg.text}</p>
+                      ) : (
+                        <p className="whitespace-pre-wrap">{msg.text}</p>
+                      )}
+                      <p className="text-[10px] text-[#667781] mt-1 text-right">
+                        {msg.timestamp ? format(new Date(msg.timestamp), "HH:mm") : ""}
+                        {msg.direction === "sent" && <span className="ml-1 text-[#53bdeb]">✓✓</span>}
+                      </p>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
               <div ref={messagesEndRef} />
             </div>
 
