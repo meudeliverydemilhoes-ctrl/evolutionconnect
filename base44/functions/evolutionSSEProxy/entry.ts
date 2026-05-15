@@ -1,8 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import { io } from 'npm:socket.io-client@4.8.1';
 
-// Deduplicação global — persiste entre requisições na mesma instância Deno
-const globalProcessed = new Set();
 
 const EVOLUTION_URL = Deno.env.get("EVOLUTION_API_URL") || "https://evolution-api-production-36e1.up.railway.app";
 const EVOLUTION_KEY = Deno.env.get("EVOLUTION_API_KEY");
@@ -69,8 +67,8 @@ Deno.serve(async (req) => {
     send("proxy_status", { status: "error", message: err.message, time: new Date().toISOString() });
   });
 
-  // Processar mensagem recebida — salva no banco e notifica o frontend
-  async function processMessage(data) {
+  // SSEProxy só extrai dados e notifica o frontend — quem salva é o whatsappWebhook via webhook
+  function processMessage(data) {
     try {
       const msgData = data?.data || data;
       const key = msgData?.key || data?.key;
@@ -96,54 +94,12 @@ Deno.serve(async (req) => {
 
       if (!text) return;
 
-      // Usar messageId da Evolution para deduplicação precisa
-      const msgId = key?.id || null;
       const msgTimestamp = msgData?.messageTimestamp || Math.floor(Date.now() / 1000);
-      const dedupeKey = msgId || `${phone}_${msgTimestamp}_${text.slice(0, 30)}`;
-
-      // Deduplicação global — bloqueia entre múltiplas conexões SSE simultâneas
-      if (globalProcessed.has(dedupeKey)) {
-        console.log(`[SSE Proxy] Duplicata ignorada: ${dedupeKey}`);
-        return;
-      }
-      globalProcessed.add(dedupeKey);
-      if (globalProcessed.size > 500) {
-        const first = globalProcessed.values().next().value;
-        globalProcessed.delete(first);
-      }
-
       const timestamp = new Date(msgTimestamp * 1000).toISOString();
-      console.log(`[SSE Proxy] Mensagem de ${phone}: ${text}`);
 
-      // Salvar mensagem
-      await base44.asServiceRole.entities.Message.create({
-        contact_phone: phone,
-        text,
-        direction: "received",
-        timestamp,
-      });
-
-      // Criar/atualizar contato
-      const contacts = await base44.asServiceRole.entities.Contact.filter({ phone });
-      if (contacts && contacts.length > 0) {
-        await base44.asServiceRole.entities.Contact.update(contacts[0].id, {
-          last_message: text,
-          last_contact_date: timestamp,
-          name: contacts[0].name || pushName,
-        });
-      } else {
-        await base44.asServiceRole.entities.Contact.create({
-          phone,
-          name: pushName,
-          last_message: text,
-          last_contact_date: timestamp,
-          status: "ativo",
-        });
-      }
-
-      // Notificar frontend
+      console.log(`[SSE Proxy] Notificando frontend: ${phone}`);
+      // Apenas notifica o frontend — sem salvar no banco
       send("new_message", { phone, text, pushName, timestamp });
-      console.log(`[SSE Proxy] Evento new_message enviado ao frontend para ${phone}`);
 
     } catch (err) {
       console.error("[SSE Proxy] Erro ao processar mensagem:", err);
