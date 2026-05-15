@@ -66,15 +66,16 @@ Deno.serve(async (req) => {
     send("proxy_status", { status: "error", message: err.message, time: new Date().toISOString() });
   });
 
-  // Apenas enviar evento para frontend (não salvar — deixar para o whatsappWebhook via HTTP)
-  async function notifyMessage(data) {
+  // Processar mensagem recebida
+  async function processMessage(data) {
     try {
       const msgData = data?.data || data;
       const key = msgData?.key || data?.key;
       const message = msgData?.message || data?.message;
       const pushName = msgData?.pushName || data?.pushName || msgData?.notifyName || "";
 
-      if (!key || key.fromMe === true) return;
+      if (!key) return;
+      if (key.fromMe === true) return;
 
       const phoneRaw = key?.remoteJidAlt || (key?.remoteJid?.includes("@lid") ? null : key?.remoteJid) || "";
       if (!phoneRaw || phoneRaw.includes("@g.us")) return;
@@ -98,19 +99,52 @@ Deno.serve(async (req) => {
 
       console.log(`[SSE Proxy] Mensagem de ${phone}: ${text}`);
 
-      // Apenas notificar frontend — whatsappWebhook salva no DB via webhook HTTP
+      // Salvar mensagem
+      await base44.asServiceRole.entities.Message.create({
+        contact_phone: phone,
+        text,
+        direction: "received",
+        timestamp,
+      });
+
+      // Criar/atualizar contato
+      const contacts = await base44.asServiceRole.entities.Contact.filter({ phone });
+      if (contacts && contacts.length > 0) {
+        await base44.asServiceRole.entities.Contact.update(contacts[0].id, {
+          last_message: text,
+          last_contact_date: timestamp,
+          name: contacts[0].name || pushName,
+        });
+      } else {
+        await base44.asServiceRole.entities.Contact.create({
+          phone,
+          name: pushName,
+          last_message: text,
+          last_contact_date: timestamp,
+          status: "ativo",
+        });
+      }
+
+      // Enviar evento ao frontend
       send("new_message", { phone, text, pushName, timestamp });
       console.log(`[SSE Proxy] Evento new_message enviado ao frontend para ${phone}`);
 
     } catch (err) {
-      console.error("[SSE Proxy] Erro ao notificar mensagem:", err);
+      console.error("[SSE Proxy] Erro ao processar mensagem:", err);
     }
   }
 
   // Escutar eventos de mensagem
   socket.on("MESSAGES_UPSERT", (data) => {
     send("raw_event", { event: "MESSAGES_UPSERT", data, time: new Date().toISOString() });
-    notifyMessage(data);
+    processMessage(data);
+  });
+
+  // onAny para debug — envia todos os outros eventos
+  socket.onAny((event, ...args) => {
+    if (!["MESSAGES_UPSERT", "messages.upsert"].includes(event)) {
+      send("raw_event", { event, data: args[0], time: new Date().toISOString() });
+    }
   });
 
   // Cleanup ao fechar conexão SSE
