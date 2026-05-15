@@ -29,7 +29,6 @@ export default function Chat() {
   const { data: contacts = [], isLoading } = useQuery({
     queryKey: ["contacts"],
     queryFn: () => base44.entities.Contact.list("-last_contact_date"),
-    refetchInterval: 30000,
   });
 
   const { data: allMessages = [], refetch: refetchMessages } = useQuery({
@@ -39,7 +38,6 @@ export default function Chat() {
         ? base44.entities.Message.filter({ contact_phone: selectedContact.phone }, "timestamp", 100)
         : [],
     enabled: !!selectedContact,
-    refetchInterval: 30000,
   });
 
   const scrollToBottom = () => {
