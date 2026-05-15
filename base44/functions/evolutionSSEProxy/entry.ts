@@ -6,19 +6,15 @@ const EVOLUTION_URL = Deno.env.get("EVOLUTION_API_URL") || "https://evolution-ap
 const EVOLUTION_KEY = Deno.env.get("EVOLUTION_API_KEY");
 const INSTANCE = Deno.env.get("EVOLUTION_INSTANCE") || "meudelivery";
 
-// Deduplicação global: msgId → timestamp de quando foi processado
-const processedIds = new Map();
-const DEDUPE_TTL_MS = 60_000; // 60 segundos
+// Deduplicação: processar cada messageId apenas uma vez por instância
+const processingIds = new Set();
 
-function isDuplicate(msgId) {
-  const now = Date.now();
-  // Limpar entradas expiradas
-  for (const [k, t] of processedIds) {
-    if (now - t > DEDUPE_TTL_MS) processedIds.delete(k);
-  }
-  if (processedIds.has(msgId)) return true;
-  processedIds.set(msgId, now);
-  return false;
+function markProcessing(msgId) {
+  if (processingIds.has(msgId)) return false;
+  processingIds.add(msgId);
+  // Remover após 5s para evitar memory leak
+  setTimeout(() => processingIds.delete(msgId), 5000);
+  return true;
 }
 
 function normalizePhone(raw) {
@@ -161,7 +157,7 @@ Deno.serve(async (req) => {
     }
   }
 
-  // Escutar eventos — usar onAny mas processar mensagem apenas uma vez por evento único
+  // Escutar eventos — processar apenas uma vez por messageId dentro desta instância
   const messageEvents = new Set(["MESSAGES_UPSERT", "messages.upsert", `${INSTANCE}:MESSAGES_UPSERT`]);
 
   socket.onAny((event, ...args) => {
@@ -169,6 +165,15 @@ Deno.serve(async (req) => {
     send("raw_event", { event, data: rawData, time: new Date().toISOString() });
 
     if (messageEvents.has(event)) {
+      const key = rawData?.data?.key || rawData?.key;
+      const msgId = key?.id;
+      
+      // Skip se já está sendo processado nesta instância
+      if (msgId && !markProcessing(msgId)) {
+        console.log(`[SSE Proxy] Já processando ${msgId} nesta instância, ignorando`);
+        return;
+      }
+      
       processMessage(rawData);
     }
   });
