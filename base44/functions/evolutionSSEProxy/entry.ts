@@ -190,12 +190,15 @@ Deno.serve(async (req) => {
       const key = rawData?.data?.key || rawData?.key;
       const msgId = key?.id;
       
+      console.log(`[SSE Proxy] Evento ${event} recebido, msgId=${msgId}, processing=${processingIds.has(msgId)}`);
+      
       if (msgId) {
         // Processar apenas uma vez, ignorar duplicatas que chegarem durante o processamento
         processOnce(msgId, () => processMessage(rawData)).catch(err => {
           console.error(`[SSE Proxy] Erro em processOnce(${msgId}):`, err);
         });
       } else {
+        console.log(`[SSE Proxy] msgId vazio, processando sem dedup`);
         processMessage(rawData);
       }
     }
