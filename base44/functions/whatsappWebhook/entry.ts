@@ -236,6 +236,25 @@ Deno.serve(async (req) => {
       timestamp: new Date().toISOString(),
     });
 
+    // Não responder para mídias (áudio, imagem, vídeo, etc.) - só registrar
+    if (messageType !== "text") {
+      console.log(`Mídia (${messageType}) apenas registrada, sem resposta da IA.`);
+      // Ainda atualiza contato
+      const contactsMedia = await base44.asServiceRole.entities.Contact.filter({ phone });
+      if (contactsMedia && contactsMedia.length > 0) {
+        await base44.asServiceRole.entities.Contact.update(contactsMedia[0].id, {
+          last_message: messageText,
+          last_contact_date: new Date().toISOString(),
+        });
+      } else {
+        await base44.asServiceRole.entities.Contact.create({
+          phone, name: pushName, last_message: messageText,
+          last_contact_date: new Date().toISOString(), status: "ativo",
+        });
+      }
+      return Response.json({ status: "ok - media registered only" });
+    }
+
     // Encontrar ou criar contato
     const contacts = await base44.asServiceRole.entities.Contact.filter({ phone });
     let contact;
