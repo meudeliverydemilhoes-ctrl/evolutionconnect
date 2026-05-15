@@ -6,28 +6,8 @@ const EVOLUTION_URL = Deno.env.get("EVOLUTION_API_URL") || "https://evolution-ap
 const EVOLUTION_KEY = Deno.env.get("EVOLUTION_API_KEY");
 const INSTANCE = Deno.env.get("EVOLUTION_INSTANCE") || "meudelivery";
 
-// Deduplicação: permite apenas UM processamento simultâneo por messageId
-const processingIds = new Map(); // msgId -> Promise resolve function
-
-async function processOnce(msgId, fn) {
-  if (processingIds.has(msgId)) {
-    // Já está sendo processado, aguardar conclusão
-    const existingPromise = processingIds.get(msgId);
-    await existingPromise;
-    return;
-  }
-
-  let resolvePromise;
-  const promise = new Promise(resolve => { resolvePromise = resolve; });
-  processingIds.set(msgId, promise);
-
-  try {
-    await fn();
-  } finally {
-    processingIds.delete(msgId);
-    resolvePromise();
-  }
-}
+// Deduplicação: rastreia quais messageIds estão sendo processados
+const processingIds = new Map(); // msgId -> Promise
 
 function normalizePhone(raw) {
   if (!raw) return null;
@@ -190,17 +170,36 @@ Deno.serve(async (req) => {
       const key = rawData?.data?.key || rawData?.key;
       const msgId = key?.id;
       
-      console.log(`[SSE Proxy] Evento ${event} recebido, msgId=${msgId}, processing=${processingIds.has(msgId)}`);
-      
-      if (msgId) {
-        // Processar apenas uma vez, ignorar duplicatas que chegarem durante o processamento
-        processOnce(msgId, () => processMessage(rawData)).catch(err => {
-          console.error(`[SSE Proxy] Erro em processOnce(${msgId}):`, err);
-        });
-      } else {
-        console.log(`[SSE Proxy] msgId vazio, processando sem dedup`);
+      if (!msgId) {
+        console.log(`[SSE Proxy] Evento sem msgId, processando normalmente`);
         processMessage(rawData);
+        return;
       }
+      
+      // Se já está processando, pular (não aguardar)
+      if (processingIds.has(msgId)) {
+        console.log(`[SSE Proxy] Evento ${event} com msgId=${msgId} já está sendo processado, ignorando`);
+        return;
+      }
+      
+      // Marcar como processando e executar
+      let resolvePromise;
+      const promise = new Promise(resolve => { resolvePromise = resolve; });
+      processingIds.set(msgId, promise);
+      
+      console.log(`[SSE Proxy] Evento ${event} com msgId=${msgId} iniciando processamento`);
+      
+      processMessage(rawData)
+        .then(() => {
+          console.log(`[SSE Proxy] Evento msgId=${msgId} finalizado com sucesso`);
+        })
+        .catch(err => {
+          console.error(`[SSE Proxy] Erro ao processar msgId=${msgId}:`, err);
+        })
+        .finally(() => {
+          processingIds.delete(msgId);
+          resolvePromise();
+        });
     }
   });
 
