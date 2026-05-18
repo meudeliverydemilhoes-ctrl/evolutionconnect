@@ -176,6 +176,19 @@ Deno.serve(async (req) => {
       phone = phone.slice(0, 4) + "9" + phone.slice(4);
     }
     const pushName = data?.pushName || data?.notifyName || "";
+    // Detectar tipo de mídia para usar texto padrão quando não há legenda
+    const messageType = message ? Object.keys(message)[0] : null;
+    const mediaFallback = {
+      audioMessage: "[Áudio]",
+      imageMessage: "[Imagem]",
+      videoMessage: "[Vídeo]",
+      documentMessage: "[Documento]",
+      stickerMessage: "[Sticker]",
+      locationMessage: "[Localização]",
+      contactMessage: "[Contato]",
+      reactionMessage: null, // ignorar reações
+    };
+
     const messageText = message?.conversation
       || message?.extendedTextMessage?.text
       || message?.imageMessage?.caption
@@ -185,12 +198,14 @@ Deno.serve(async (req) => {
       || message?.stickerMessage?.caption
       || data?.body
       || body?.body
+      || (messageType && messageType in mediaFallback ? mediaFallback[messageType] : "")
       || "";
 
-    console.log(`phone="${phone}" | texto="${messageText}" | pushName="${pushName}"`);
+    console.log(`phone="${phone}" | tipo="${messageType}" | texto="${messageText}" | pushName="${pushName}"`);
 
-    if (!phone || !messageText) {
-      console.log("Ignorado: sem telefone ou texto. remoteJid:", phoneRaw, "| messageKeys:", Object.keys(message || {}));
+    // Ignorar reações e mensagens sem conteúdo identificável
+    if (!phone || !messageText || messageText === null) {
+      console.log("Ignorado: sem telefone ou texto. remoteJid:", phoneRaw, "| messageType:", messageType, "| messageKeys:", Object.keys(message || {}));
       return Response.json({ status: "ignored - no content" });
     }
 
@@ -233,8 +248,11 @@ Deno.serve(async (req) => {
       20
     );
 
+    // Não gerar resposta de IA para mídias sem texto (áudio, imagem sem legenda, etc.)
+    const isMediaOnly = ["[Áudio]", "[Imagem]", "[Vídeo]", "[Documento]", "[Sticker]", "[Localização]", "[Contato]"].includes(messageText);
+
     // Gerar resposta de IA
-    const aiResponse = await getAIResponse(base44.asServiceRole, messageText, contact.name || pushName, messageHistory);
+    const aiResponse = isMediaOnly ? null : await getAIResponse(base44.asServiceRole, messageText, contact.name || pushName, messageHistory);
 
     if (!aiResponse) {
       console.log(`Iza optou por silêncio para ${phone}`);
