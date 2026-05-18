@@ -32,14 +32,24 @@ Deno.serve(async (req) => {
     });
 
     const data = await res.json();
+    const timestamp = new Date().toISOString();
 
-    // Salvar mensagem enviada no histórico
+    // Salvar mensagem enviada no histórico (independente do resultado da Evolution)
     await base44.asServiceRole.entities.Message.create({
       contact_phone: phone,
       text: message,
       direction: "sent",
-      timestamp: new Date().toISOString(),
+      timestamp,
     });
+
+    // Atualizar last_message do contato
+    const contacts = await base44.asServiceRole.entities.Contact.filter({ phone });
+    if (contacts && contacts.length > 0) {
+      await base44.asServiceRole.entities.Contact.update(contacts[0].id, {
+        last_message: message,
+        last_contact_date: timestamp,
+      });
+    }
 
     return Response.json({ status: "ok", result: data });
   } catch (error) {

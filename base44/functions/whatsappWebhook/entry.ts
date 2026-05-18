@@ -137,23 +137,30 @@ Deno.serve(async (req) => {
     console.log("PAYLOAD COMPLETO:", JSON.stringify(body));
     console.log("HEADERS:", JSON.stringify(Object.fromEntries(req.headers.entries())));
 
-    const event = body?.event;
+    // Com webhookByEvents: true, a Evolution pode enviar sem campo "event" no body
+    // ou com o evento no campo "event". Capturamos o event da URL também.
+    const urlObj = new URL(req.url);
+    const urlEvent = urlObj.pathname.split("/").pop(); // último segmento da URL
+    const event = body?.event || (urlEvent && urlEvent !== "whatsappWebhook" ? urlEvent : null);
+
+    console.log(`[webhook] event="${event}" | url="${req.url}"`);
+
+    // Ignorar eventos que não são de mensagem recebida (mas aceitar sem event = trata como mensagem)
+    const validEvents = ["messages.upsert", "MESSAGES_UPSERT", "message", "messages.update"];
+    if (event && !validEvents.includes(event)) {
+      console.log("Evento ignorado:", event);
+      return Response.json({ status: "ignored - event: " + event });
+    }
 
     // Suporte ao formato Evolution v1 (data direto) e v2 (body.data)
     const data = body?.data || body;
     const message = data?.message;
     const key = data?.key;
 
-    // Ignorar mensagens enviadas por nós
+    // Ignorar mensagens enviadas por nós (já salvas pelo sendWhatsAppMessage)
     if (key?.fromMe === true) {
-      console.log("Ignorado: mensagem própria");
+      console.log("Ignorado: mensagem própria (fromMe)");
       return Response.json({ status: "ignored - own message" });
-    }
-
-    // Ignorar eventos que não são de mensagem
-    if (event && !["messages.upsert", "MESSAGES_UPSERT", "message", "messages.update"].includes(event)) {
-      console.log("Evento ignorado:", event);
-      return Response.json({ status: "ignored - event: " + event });
     }
 
     // Log completo do key para debug do @lid
