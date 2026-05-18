@@ -27,8 +27,7 @@ Deno.serve(async (req) => {
           webhookByEvents: false,
           webhookBase64: false,
           events: [
-            "MESSAGES_UPSERT",
-            "SEND_MESSAGE"
+            "MESSAGES_UPSERT"
           ]
         }
       }),

@@ -3,6 +3,9 @@ import { io } from 'npm:socket.io-client@4.8.1';
 
 const EVOLUTION_URL = Deno.env.get("EVOLUTION_API_URL") || "https://evolution-api-production-36e1.up.railway.app";
 const EVOLUTION_KEY = Deno.env.get("EVOLUTION_API_KEY");
+const APP_ID = Deno.env.get("BASE44_APP_ID");
+
+
 
 // SSE clients registry (shared within same isolate)
 const clients = new Set();
@@ -56,7 +59,7 @@ function ensureSocket() {
     console.log(`[proxy] evento="${event}"`);
     broadcast({ type: "event", event, data, ts: Date.now() });
 
-    // Detectar mensagens recebidas para notificar frontend com tipo especial
+    // Detectar mensagens recebidas para: 1) notificar frontend, 2) processar via webhook
     if (event === "MESSAGES_UPSERT" || event === "messages.upsert") {
       const messages = Array.isArray(data) ? data : (data?.messages || [data]);
       for (const item of messages) {
@@ -74,11 +77,27 @@ function ensureSocket() {
         const msg = item?.message || {};
         const text = msg.conversation || msg.extendedTextMessage?.text
           || msg.imageMessage?.caption || msg.videoMessage?.caption
-          || msg.audioMessage?.caption || msg.documentMessage?.caption || "";
+          || msg.audioMessage?.caption || msg.documentMessage?.caption
+          || (Object.keys(msg)[0] ? `[${Object.keys(msg)[0].replace("Message","").toUpperCase()}]` : "");
 
-        if (text) {
-          broadcast({ type: "new_message", phone, text, pushName: item.pushName || "", ts: Date.now() });
-        }
+        // Notificar frontend
+        broadcast({ type: "new_message", phone, text: text || "[mídia]", pushName: item.pushName || "", ts: Date.now() });
+
+        // Encaminhar para whatsappWebhook para salvar no banco e gerar resposta IA
+        const webhookUrl = `https://api.base44.com/api/apps/${APP_ID}/functions/whatsappWebhook`;
+        fetch(webhookUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "base44-app-id": APP_ID,
+          },
+          body: JSON.stringify({
+            event: "messages.upsert",
+            instance: Deno.env.get("EVOLUTION_INSTANCE") || "meudelivery",
+            data: item,
+          }),
+        }).then(r => console.log(`[proxy] webhook forwarded: ${r.status}`))
+          .catch(e => console.error("[proxy] webhook forward error:", e.message));
       }
     }
   });
