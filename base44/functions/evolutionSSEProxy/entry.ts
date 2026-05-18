@@ -1,9 +1,7 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import { io } from 'npm:socket.io-client@4.8.1';
 
 const EVOLUTION_URL = Deno.env.get("EVOLUTION_API_URL") || "https://evolution-api-production-36e1.up.railway.app";
 const EVOLUTION_KEY = Deno.env.get("EVOLUTION_API_KEY");
-const INSTANCE = Deno.env.get("EVOLUTION_INSTANCE") || "meudelivery";
 
 function normalizePhone(raw) {
   if (!raw) return null;
@@ -20,16 +18,7 @@ Deno.serve(async (req) => {
     return Response.json({ status: "ok" });
   }
 
-  const base44 = createClientFromRequest(req);
-
-  // Auth check — tenta obter usuário, mas permite continuar se não autenticado (SSE público para o app)
-  let userEmail = "anon";
-  try {
-    const user = await base44.auth.me();
-    if (user) userEmail = user.email;
-  } catch (_) { /* app público */ }
-
-  console.log(`[SSE Proxy] Nova conexão SSE de ${userEmail}`);
+  console.log(`[SSE Proxy] Nova conexão SSE`);
 
   const stream = new TransformStream();
   const writer = stream.writable.getWriter();
@@ -40,15 +29,15 @@ Deno.serve(async (req) => {
     writer.write(encoder.encode(payload)).catch(() => {});
   }
 
-  // Conectar socket.io na Evolution
+  // Conectar socket.io na Evolution — forçar polling para evitar websocket error
   console.log(`[SSE Proxy] Conectando socket.io em ${EVOLUTION_URL}`);
 
   const socket = io(EVOLUTION_URL, {
-    transports: ["websocket", "polling"],
+    transports: ["polling"],
     extraHeaders: { apikey: EVOLUTION_KEY },
     reconnection: true,
-    reconnectionAttempts: 10,
-    reconnectionDelay: 3000,
+    reconnectionAttempts: 20,
+    reconnectionDelay: 2000,
   });
 
   socket.on("connect", () => {
@@ -66,11 +55,8 @@ Deno.serve(async (req) => {
     send("proxy_status", { status: "error", message: err.message, time: new Date().toISOString() });
   });
 
-  // Cache de deduplicação simples
-  const recentMessages = new Map();
-
-  // Processar mensagem com debounce
-  async function processMessage(data) {
+  // Apenas notificar o frontend — salvamento é feito pelo whatsappWebhook (HTTP)
+  function notifyFrontend(data) {
     try {
       const msgData = data?.data || data;
       const key = msgData?.key || data?.key;
@@ -95,77 +81,25 @@ Deno.serve(async (req) => {
 
       if (!text) return;
 
-      // Deduplicação por timestamp + phone + text
-      const msgTs = msgData?.messageTimestamp || Math.floor(Date.now() / 1000);
-      const dedupeKey = `${phone}_${msgTs}_${text.slice(0, 20)}`;
-      
-      if (recentMessages.has(dedupeKey)) {
-        console.log(`[SSE Proxy] Duplicata ignorada: ${dedupeKey}`);
-        return;
-      }
-      recentMessages.set(dedupeKey, true);
-      // Limpar cache antigo
-      if (recentMessages.size > 50) {
-        const first = recentMessages.keys().next().value;
-        recentMessages.delete(first);
-      }
-
       const timestamp = msgData?.messageTimestamp
         ? new Date(msgData.messageTimestamp * 1000).toISOString()
         : new Date().toISOString();
 
-      console.log(`[SSE Proxy] Mensagem de ${phone}: ${text}`);
-
-      // Salvar mensagem com retry
-      let retries = 3;
-      while (retries > 0) {
-        try {
-          await base44.asServiceRole.entities.Message.create({
-            contact_phone: phone,
-            text,
-            direction: "received",
-            timestamp,
-          });
-          break;
-        } catch (err) {
-          retries--;
-          if (retries > 0) await new Promise(r => setTimeout(r, 500));
-        }
-      }
-
-      // Atualizar contato
-      const contacts = await base44.asServiceRole.entities.Contact.filter({ phone });
-      if (contacts?.length > 0) {
-        await base44.asServiceRole.entities.Contact.update(contacts[0].id, {
-          last_message: text,
-          last_contact_date: timestamp,
-          name: contacts[0].name || pushName,
-        });
-      } else {
-        await base44.asServiceRole.entities.Contact.create({
-          phone,
-          name: pushName,
-          last_message: text,
-          last_contact_date: timestamp,
-          status: "ativo",
-        });
-      }
-
+      console.log(`[SSE Proxy] Notificando frontend: ${phone}: ${text}`);
       send("new_message", { phone, text, pushName, timestamp });
-      console.log(`[SSE Proxy] Mensagem salva e notificada para ${phone}`);
 
     } catch (err) {
-      console.error("[SSE Proxy] Erro ao processar mensagem:", err);
+      console.error("[SSE Proxy] Erro ao notificar:", err);
     }
   }
 
   // Escutar eventos de mensagem
   socket.on("MESSAGES_UPSERT", (data) => {
     send("raw_event", { event: "MESSAGES_UPSERT", data, time: new Date().toISOString() });
-    processMessage(data);
+    notifyFrontend(data);
   });
 
-  // onAny para debug — envia todos os outros eventos
+  // onAny para debug
   socket.onAny((event, ...args) => {
     if (!["MESSAGES_UPSERT", "messages.upsert"].includes(event)) {
       send("raw_event", { event, data: args[0], time: new Date().toISOString() });
