@@ -49,6 +49,7 @@ export default function Chat() {
         ? base44.entities.Message.filter({ contact_phone: selectedContact.phone }, "timestamp", 100)
         : [],
     enabled: !!selectedContact,
+    refetchInterval: 3000,
   });
 
   // Tempo real via subscriptions do Base44 (funciona sempre, sem CORS)
