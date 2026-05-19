@@ -119,9 +119,17 @@ export function useEvolutionSocket({ onNewMessage, onConnectionChange }) {
       console.warn("[Socket] Erro de conexão:", err.message);
     });
 
+    // Log de TODOS os eventos para debug
+    const originalOnevent = socket.onevent;
+    socket.onevent = function(packet) {
+      console.log("[Socket] EVENTO RAW:", JSON.stringify(packet?.data?.[0]), "| data:", JSON.stringify(packet?.data?.[1])?.substring(0, 300));
+      originalOnevent.call(this, packet);
+    };
+
     // Formato com nome da instância como evento
     socket.on(INSTANCE, (data) => {
       const event = data?.event;
+      console.log("[Socket] Evento da instância:", event);
       if (event === "messages.upsert" || event === "MESSAGES_UPSERT") {
         handleMessageData(data);
       }
