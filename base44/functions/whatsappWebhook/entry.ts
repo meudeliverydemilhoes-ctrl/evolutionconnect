@@ -137,10 +137,25 @@ Deno.serve(async (req) => {
     console.log("PAYLOAD COMPLETO:", JSON.stringify(body));
     console.log("HEADERS:", JSON.stringify(Object.fromEntries(req.headers.entries())));
 
-    const event = body?.event;
+    // Suporte a todos os formatos da Evolution API:
+    // Formato 1 (webhookByEvents=false): { event: "MESSAGES_UPSERT", data: {...} }
+    // Formato 2 (webhookByEvents=true):  { MESSAGES_UPSERT: {...} } ou { messages_upsert: {...} }
+    // Formato 3 (legado):                { key: {...}, message: {...} }
+    let event = body?.event;
+    let data = body?.data;
 
-    // Suporte ao formato Evolution v1 (data direto) e v2 (body.data)
-    const data = body?.data || body;
+    if (!data) {
+      // Tentar formato webhookByEvents=true
+      const evtData = body?.MESSAGES_UPSERT || body?.messages_upsert || body?.MESSAGE_UPSERT;
+      if (evtData) {
+        event = "MESSAGES_UPSERT";
+        data = evtData;
+      } else {
+        // Formato legado: o body inteiro é o data
+        data = body;
+      }
+    }
+
     const message = data?.message;
     const key = data?.key;
 
