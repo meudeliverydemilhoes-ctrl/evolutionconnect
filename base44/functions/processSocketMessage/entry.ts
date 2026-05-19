@@ -118,36 +118,51 @@ Deno.serve(async (req) => {
     const body = await req.json();
     console.log("processSocketMessage payload:", JSON.stringify(body));
 
-    const { phone, pushName, text, timestamp } = body;
+    const { phone, pushName, text, timestamp, fromMe } = body;
 
     if (!phone || !text) {
       return Response.json({ status: "ignored - missing phone or text" });
     }
 
-    // Verificar duplicata (webhook pode ter salvo já)
+    const direction = fromMe ? "sent" : "received";
+    const msgTime = timestamp ? new Date(timestamp) : new Date();
+
+    // Verificar duplicata
     const recent = await base44.asServiceRole.entities.Message.filter(
-      { contact_phone: phone, direction: "received" },
+      { contact_phone: phone, direction },
       "-timestamp",
       5
     );
-    const msgTime = timestamp ? new Date(timestamp) : new Date();
     const alreadySaved = recent.some(m =>
       m.text === text &&
       Math.abs(new Date(m.timestamp) - msgTime) < 15000
     );
 
     if (alreadySaved) {
-      console.log("Duplicata detectada, webhook já processou. phone:", phone);
-      return Response.json({ status: "duplicate - webhook already processed" });
+      console.log("Duplicata detectada, já processado. phone:", phone);
+      return Response.json({ status: "duplicate - already processed" });
     }
 
-    // Salvar mensagem recebida
+    // Salvar mensagem
     await base44.asServiceRole.entities.Message.create({
       contact_phone: phone,
       text,
-      direction: "received",
+      direction,
       timestamp: msgTime.toISOString(),
     });
+
+    // Se for mensagem enviada (fromMe), só salvar — sem IA
+    if (fromMe) {
+      const contacts = await base44.asServiceRole.entities.Contact.filter({ phone });
+      if (contacts && contacts.length > 0) {
+        await base44.asServiceRole.entities.Contact.update(contacts[0].id, {
+          last_message: text,
+          last_contact_date: msgTime.toISOString(),
+        });
+      }
+      console.log("Mensagem enviada salva para", phone);
+      return Response.json({ status: "ok - sent message saved" });
+    }
 
     // Encontrar ou criar contato
     const contacts = await base44.asServiceRole.entities.Contact.filter({ phone });

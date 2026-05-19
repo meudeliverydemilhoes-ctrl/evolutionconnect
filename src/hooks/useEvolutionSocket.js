@@ -26,8 +26,8 @@ function extractMessage(data) {
   const pushName = msgData?.pushName || data?.pushName || "";
 
   if (!key) return null;
-  if (key.fromMe === true) return null;
 
+  const fromMe = key.fromMe === true;
   const remoteJid = key.remoteJid || "";
   if (remoteJid.includes("@g.us")) return null;
 
@@ -40,7 +40,6 @@ function extractMessage(data) {
     "";
 
   if (!rawJid) {
-    // @lid sem alternativa — logar para debug
     console.log("[Socket] @lid sem JID alternativo. key:", JSON.stringify(key), "msgData keys:", Object.keys(msgData || {}));
     return null;
   }
@@ -58,7 +57,7 @@ function extractMessage(data) {
     data?.body ||
     "";
 
-  return { phone, pushName, text: text || null, timestamp: new Date().toISOString() };
+  return { phone, pushName, text: text || null, timestamp: new Date().toISOString(), fromMe };
 }
 
 export function useEvolutionSocket({ onNewMessage, onConnectionChange }) {
@@ -71,7 +70,7 @@ export function useEvolutionSocket({ onNewMessage, onConnectionChange }) {
     const msg = extractMessage(data);
     if (!msg || !msg.text) return;
 
-    console.log("[Socket] Nova mensagem de", msg.phone, ":", msg.text);
+    console.log("[Socket] Nova mensagem de", msg.phone, "(fromMe:", msg.fromMe, "):", msg.text);
 
     // Aguardar 2s para dar chance ao webhook processar primeiro
     await new Promise(r => setTimeout(r, 2000));
@@ -83,6 +82,7 @@ export function useEvolutionSocket({ onNewMessage, onConnectionChange }) {
         pushName: msg.pushName,
         text: msg.text,
         timestamp: msg.timestamp,
+        fromMe: msg.fromMe,
       });
     } catch (err) {
       console.error("[Socket] Erro ao chamar processSocketMessage:", err);
