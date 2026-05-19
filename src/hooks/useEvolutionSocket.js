@@ -96,7 +96,7 @@ export function useEvolutionSocket({ onNewMessage, onConnectionChange }) {
     console.log("[Socket] Conectando à Evolution API...");
 
     const socket = io(EVOLUTION_URL, {
-      transports: ["websocket", "polling"],
+      transports: ["polling"],
       auth: { apikey: EVOLUTION_API_KEY },
       query: { apikey: EVOLUTION_API_KEY },
       extraHeaders: { apikey: EVOLUTION_API_KEY },
