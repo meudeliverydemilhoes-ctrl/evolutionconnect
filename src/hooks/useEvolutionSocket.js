@@ -28,8 +28,22 @@ function extractMessage(data) {
   if (!key) return null;
   if (key.fromMe === true) return null;
 
-  const rawJid = key.remoteJidAlt || (key.remoteJid?.includes("@lid") ? null : key.remoteJid) || "";
-  if (!rawJid || rawJid.includes("@g.us")) return null;
+  const remoteJid = key.remoteJid || "";
+  if (remoteJid.includes("@g.us")) return null;
+
+  // Suporte ao @lid: tentar todas as alternativas de JID disponíveis
+  const rawJid =
+    key.remoteJidAlt ||
+    msgData?.participant ||
+    msgData?.from ||
+    (!remoteJid.includes("@lid") ? remoteJid : null) ||
+    "";
+
+  if (!rawJid) {
+    // @lid sem alternativa — logar para debug
+    console.log("[Socket] @lid sem JID alternativo. key:", JSON.stringify(key), "msgData keys:", Object.keys(msgData || {}));
+    return null;
+  }
 
   const phone = normalizePhone(rawJid);
   if (!phone) return null;
@@ -44,58 +58,7 @@ function extractMessage(data) {
     data?.body ||
     "";
 
-  return { phone, pushName, text: text || null, timestamp: new Date().toISOString(), messageId: key.id };
-}
-
-// Salva mensagem recebida via socket diretamente no banco (fallback caso o webhook não processe)
-async function saveMessageFromSocket(msg) {
-  try {
-    // Verificar se já existe mensagem com esse conteúdo recente (últimos 10s) para evitar duplicatas
-    const recent = await base44.entities.Message.filter(
-      { contact_phone: msg.phone, direction: "received" },
-      "-timestamp",
-      5
-    );
-    const alreadySaved = recent.some(m => m.text === msg.text && 
-      Math.abs(new Date(m.timestamp) - new Date(msg.timestamp)) < 10000);
-    
-    if (alreadySaved) {
-      console.log("[Socket] Mensagem já salva pelo webhook, ignorando duplicata");
-      return false;
-    }
-
-    // Salvar mensagem
-    await base44.entities.Message.create({
-      contact_phone: msg.phone,
-      text: msg.text,
-      direction: "received",
-      timestamp: msg.timestamp,
-    });
-
-    // Atualizar ou criar contato
-    const contacts = await base44.entities.Contact.filter({ phone: msg.phone });
-    if (contacts && contacts.length > 0) {
-      await base44.entities.Contact.update(contacts[0].id, {
-        last_message: msg.text,
-        last_contact_date: msg.timestamp,
-        name: contacts[0].name || msg.pushName,
-      });
-    } else {
-      await base44.entities.Contact.create({
-        phone: msg.phone,
-        name: msg.pushName || msg.phone,
-        last_message: msg.text,
-        last_contact_date: msg.timestamp,
-        status: "ativo",
-      });
-    }
-
-    console.log("[Socket] Mensagem salva diretamente via socket:", msg.phone, msg.text);
-    return true;
-  } catch (err) {
-    console.error("[Socket] Erro ao salvar mensagem:", err);
-    return false;
-  }
+  return { phone, pushName, text: text || null, timestamp: new Date().toISOString() };
 }
 
 export function useEvolutionSocket({ onNewMessage, onConnectionChange }) {
@@ -107,15 +70,24 @@ export function useEvolutionSocket({ onNewMessage, onConnectionChange }) {
   const handleMessageData = useCallback(async (data) => {
     const msg = extractMessage(data);
     if (!msg || !msg.text) return;
-    
+
     console.log("[Socket] Nova mensagem de", msg.phone, ":", msg.text);
-    
-    // Aguardar 1.5s para dar chance ao webhook salvar primeiro
-    await new Promise(r => setTimeout(r, 1500));
-    
-    // Tentar salvar (só salva se o webhook não salvou ainda)
-    await saveMessageFromSocket(msg);
-    
+
+    // Aguardar 2s para dar chance ao webhook processar primeiro
+    await new Promise(r => setTimeout(r, 2000));
+
+    // Chamar função backend para salvar + IA (com deduplicação interna)
+    try {
+      await base44.functions.invoke("processSocketMessage", {
+        phone: msg.phone,
+        pushName: msg.pushName,
+        text: msg.text,
+        timestamp: msg.timestamp,
+      });
+    } catch (err) {
+      console.error("[Socket] Erro ao chamar processSocketMessage:", err);
+    }
+
     // Notificar o Chat para rebuscar
     onNewMessageRef.current?.(msg);
   }, []);
