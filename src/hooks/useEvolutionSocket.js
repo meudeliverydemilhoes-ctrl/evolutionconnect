@@ -13,7 +13,6 @@ function normalizePhone(rawJid) {
     .replace("@c.us", "")
     .replace(/@lid$/, "")
     .replace(/\D/g, "");
-  // Inserir 9 em números BR de 12 dígitos
   if (phone.startsWith("55") && phone.length === 12) {
     phone = phone.slice(0, 4) + "9" + phone.slice(4);
   }
@@ -21,7 +20,6 @@ function normalizePhone(rawJid) {
 }
 
 function extractMessage(data) {
-  // Suporta formato Evolution v1 e v2
   const msgData = data?.data || data;
   const key = msgData?.key || data?.key;
   const message = msgData?.message || data?.message;
@@ -41,25 +39,15 @@ function extractMessage(data) {
     message?.extendedTextMessage?.text ||
     message?.imageMessage?.caption ||
     message?.videoMessage?.caption ||
-    message?.audioMessage?.caption ||
     message?.documentMessage?.caption ||
     msgData?.body ||
     data?.body ||
     "";
 
-  if (!text) return null;
-
-  return {
-    phone,
-    pushName,
-    text,
-    timestamp: new Date().toISOString(),
-    messageId: key.id,
-  };
+  return { phone, pushName, text: text || "[mídia]", timestamp: new Date().toISOString(), messageId: key.id };
 }
 
 export function useEvolutionSocket({ onNewMessage, onConnectionChange }) {
-  const socketRef = useRef(null);
   const onNewMessageRef = useRef(onNewMessage);
   const onConnectionChangeRef = useRef(onConnectionChange);
   onNewMessageRef.current = onNewMessage;
@@ -68,41 +56,9 @@ export function useEvolutionSocket({ onNewMessage, onConnectionChange }) {
   const handleMessageData = useCallback(async (data) => {
     const msg = extractMessage(data);
     if (!msg) return;
-
     console.log("[Socket] Nova mensagem de", msg.phone, ":", msg.text);
-
-    try {
-      // Salvar mensagem
-      await base44.entities.Message.create({
-        contact_phone: msg.phone,
-        text: msg.text,
-        direction: "received",
-        timestamp: msg.timestamp,
-      });
-
-      // Criar ou atualizar contato
-      const contacts = await base44.entities.Contact.filter({ phone: msg.phone });
-      if (contacts && contacts.length > 0) {
-        await base44.entities.Contact.update(contacts[0].id, {
-          last_message: msg.text,
-          last_contact_date: msg.timestamp,
-          name: contacts[0].name || msg.pushName,
-        });
-      } else {
-        await base44.entities.Contact.create({
-          phone: msg.phone,
-          name: msg.pushName,
-          last_message: msg.text,
-          last_contact_date: msg.timestamp,
-          status: "ativo",
-        });
-      }
-
-      // Notificar o Chat para atualizar
-      onNewMessageRef.current?.(msg);
-    } catch (err) {
-      console.error("[Socket] Erro ao salvar mensagem:", err);
-    }
+    // Apenas notificar o Chat para rebuscar — o webhook já salvou no BD
+    onNewMessageRef.current?.(msg);
   }, []);
 
   useEffect(() => {
@@ -110,15 +66,13 @@ export function useEvolutionSocket({ onNewMessage, onConnectionChange }) {
 
     const socket = io(EVOLUTION_URL, {
       transports: ["websocket", "polling"],
-      extraHeaders: {
-        apikey: EVOLUTION_API_KEY,
-      },
+      auth: { apikey: EVOLUTION_API_KEY },
+      query: { apikey: EVOLUTION_API_KEY },
+      extraHeaders: { apikey: EVOLUTION_API_KEY },
       reconnection: true,
       reconnectionAttempts: Infinity,
-      reconnectionDelay: 3000,
+      reconnectionDelay: 5000,
     });
-
-    socketRef.current = socket;
 
     socket.on("connect", () => {
       console.log("[Socket] Conectado! ID:", socket.id);
@@ -131,38 +85,23 @@ export function useEvolutionSocket({ onNewMessage, onConnectionChange }) {
     });
 
     socket.on("connect_error", (err) => {
-      console.error("[Socket] Erro de conexão:", err.message);
+      console.warn("[Socket] Erro de conexão:", err.message);
     });
 
-    // Escutar todos os eventos
-    socket.onAny((event, data) => {
-      console.log("[Socket] Evento recebido:", event, data);
-    });
-
-    // Eventos de mensagem
-    socket.on("MESSAGES_UPSERT", (data) => {
-      console.log("[Socket] MESSAGES_UPSERT:", data);
-      handleMessageData(data);
-    });
-
-    socket.on("messages.upsert", (data) => {
-      console.log("[Socket] messages.upsert:", data);
-      handleMessageData(data);
-    });
-
-    // Filtrar pela instância correta
+    // Formato webhookByEvents: evento com nome da instância
     socket.on(INSTANCE, (data) => {
-      console.log("[Socket] Evento da instância:", data);
-      if (data?.event === "messages.upsert" || data?.event === "MESSAGES_UPSERT") {
+      const event = data?.event;
+      if (event === "messages.upsert" || event === "MESSAGES_UPSERT") {
         handleMessageData(data);
       }
     });
+
+    socket.on("MESSAGES_UPSERT", handleMessageData);
+    socket.on("messages.upsert", handleMessageData);
 
     return () => {
       console.log("[Socket] Desconectando...");
       socket.disconnect();
     };
   }, [handleMessageData]);
-
-  return socketRef;
 }
