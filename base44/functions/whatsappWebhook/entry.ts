@@ -173,14 +173,28 @@ Deno.serve(async (req) => {
 
     // Log completo do key para debug do @lid
     console.log("KEY COMPLETO:", JSON.stringify(key));
-    console.log("DATA KEYS:", Object.keys(data || {}));
+    console.log("DATA COMPLETO:", JSON.stringify(data));
 
-    // Suporte ao novo formato @lid do WhatsApp - usar remoteJidAlt quando disponível
-    const phoneRaw = key?.remoteJidAlt || (key?.remoteJid?.includes("@lid") ? null : key?.remoteJid) || data?.from || "";
+    // Suporte ao novo formato @lid do WhatsApp
+    // Tentar todas as possibilidades de telefone disponíveis no payload
+    const remoteJid = key?.remoteJid || "";
+    const phoneRaw = key?.remoteJidAlt 
+      || data?.remoteJidAlt 
+      || data?.participant
+      || (remoteJid.includes("@lid") ? null : remoteJid)
+      || data?.from 
+      || data?.phoneNumber
+      || "";
+
     // Ignorar mensagens de grupos
-    if (!phoneRaw || phoneRaw.includes("@g.us")) {
-      console.log("Ignorado: mensagem de grupo ou sem remoteJid válido");
-      return Response.json({ status: "ignored - group message or no valid jid" });
+    if (remoteJid.includes("@g.us") || phoneRaw.includes("@g.us")) {
+      console.log("Ignorado: mensagem de grupo");
+      return Response.json({ status: "ignored - group message" });
+    }
+
+    if (!phoneRaw) {
+      console.log("ATENÇÃO @lid sem alternativa - data completo:", JSON.stringify(data), "key:", JSON.stringify(key));
+      return Response.json({ status: "ignored - @lid sem alternativa" });
     }
 
     // phoneRaw pode ser ex: 555199667558@s.whatsapp.net (faltando dígito 9)
