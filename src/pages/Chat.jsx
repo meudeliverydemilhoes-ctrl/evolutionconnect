@@ -26,6 +26,13 @@ export default function Chat() {
       if (selectedContactRef.current?.phone === msg.phone) {
         queryClient.invalidateQueries({ queryKey: ["messages", msg.phone] });
       }
+      // Refetch adicional após 2s para garantir que o webhook já salvou no banco
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ["contacts"] });
+        if (selectedContactRef.current?.phone === msg.phone) {
+          queryClient.invalidateQueries({ queryKey: ["messages", msg.phone] });
+        }
+      }, 2000);
     },
     onConnectionChange: setSocketConnected,
   });

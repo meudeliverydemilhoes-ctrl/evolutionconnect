@@ -11,7 +11,7 @@ function normalizePhone(rawJid) {
   let phone = rawJid
     .replace("@s.whatsapp.net", "")
     .replace("@c.us", "")
-    .replace(/@lid$/, "")
+    .replace(/@lid.*$/, "")
     .replace(/\D/g, "");
   if (phone.startsWith("55") && phone.length === 12) {
     phone = phone.slice(0, 4) + "9" + phone.slice(4);
@@ -44,7 +44,58 @@ function extractMessage(data) {
     data?.body ||
     "";
 
-  return { phone, pushName, text: text || "[mídia]", timestamp: new Date().toISOString(), messageId: key.id };
+  return { phone, pushName, text: text || null, timestamp: new Date().toISOString(), messageId: key.id };
+}
+
+// Salva mensagem recebida via socket diretamente no banco (fallback caso o webhook não processe)
+async function saveMessageFromSocket(msg) {
+  try {
+    // Verificar se já existe mensagem com esse conteúdo recente (últimos 10s) para evitar duplicatas
+    const recent = await base44.entities.Message.filter(
+      { contact_phone: msg.phone, direction: "received" },
+      "-timestamp",
+      5
+    );
+    const alreadySaved = recent.some(m => m.text === msg.text && 
+      Math.abs(new Date(m.timestamp) - new Date(msg.timestamp)) < 10000);
+    
+    if (alreadySaved) {
+      console.log("[Socket] Mensagem já salva pelo webhook, ignorando duplicata");
+      return false;
+    }
+
+    // Salvar mensagem
+    await base44.entities.Message.create({
+      contact_phone: msg.phone,
+      text: msg.text,
+      direction: "received",
+      timestamp: msg.timestamp,
+    });
+
+    // Atualizar ou criar contato
+    const contacts = await base44.entities.Contact.filter({ phone: msg.phone });
+    if (contacts && contacts.length > 0) {
+      await base44.entities.Contact.update(contacts[0].id, {
+        last_message: msg.text,
+        last_contact_date: msg.timestamp,
+        name: contacts[0].name || msg.pushName,
+      });
+    } else {
+      await base44.entities.Contact.create({
+        phone: msg.phone,
+        name: msg.pushName || msg.phone,
+        last_message: msg.text,
+        last_contact_date: msg.timestamp,
+        status: "ativo",
+      });
+    }
+
+    console.log("[Socket] Mensagem salva diretamente via socket:", msg.phone, msg.text);
+    return true;
+  } catch (err) {
+    console.error("[Socket] Erro ao salvar mensagem:", err);
+    return false;
+  }
 }
 
 export function useEvolutionSocket({ onNewMessage, onConnectionChange }) {
@@ -55,9 +106,17 @@ export function useEvolutionSocket({ onNewMessage, onConnectionChange }) {
 
   const handleMessageData = useCallback(async (data) => {
     const msg = extractMessage(data);
-    if (!msg) return;
+    if (!msg || !msg.text) return;
+    
     console.log("[Socket] Nova mensagem de", msg.phone, ":", msg.text);
-    // Apenas notificar o Chat para rebuscar — o webhook já salvou no BD
+    
+    // Aguardar 1.5s para dar chance ao webhook salvar primeiro
+    await new Promise(r => setTimeout(r, 1500));
+    
+    // Tentar salvar (só salva se o webhook não salvou ainda)
+    await saveMessageFromSocket(msg);
+    
+    // Notificar o Chat para rebuscar
     onNewMessageRef.current?.(msg);
   }, []);
 
@@ -88,7 +147,7 @@ export function useEvolutionSocket({ onNewMessage, onConnectionChange }) {
       console.warn("[Socket] Erro de conexão:", err.message);
     });
 
-    // Formato webhookByEvents: evento com nome da instância
+    // Formato com nome da instância como evento
     socket.on(INSTANCE, (data) => {
       const event = data?.event;
       if (event === "messages.upsert" || event === "MESSAGES_UPSERT") {
