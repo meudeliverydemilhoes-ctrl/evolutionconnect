@@ -137,30 +137,23 @@ Deno.serve(async (req) => {
     console.log("PAYLOAD COMPLETO:", JSON.stringify(body));
     console.log("HEADERS:", JSON.stringify(Object.fromEntries(req.headers.entries())));
 
-    // Com webhookByEvents: true, a Evolution pode enviar sem campo "event" no body
-    // ou com o evento no campo "event". Capturamos o event da URL também.
-    const urlObj = new URL(req.url);
-    const urlEvent = urlObj.pathname.split("/").pop(); // último segmento da URL
-    const event = body?.event || (urlEvent && urlEvent !== "whatsappWebhook" ? urlEvent : null);
-
-    console.log(`[webhook] event="${event}" | url="${req.url}"`);
-
-    // Ignorar eventos que não são de mensagem recebida (mas aceitar sem event = trata como mensagem)
-    const validEvents = ["messages.upsert", "MESSAGES_UPSERT", "message", "messages.update"];
-    if (event && !validEvents.includes(event)) {
-      console.log("Evento ignorado:", event);
-      return Response.json({ status: "ignored - event: " + event });
-    }
+    const event = body?.event;
 
     // Suporte ao formato Evolution v1 (data direto) e v2 (body.data)
     const data = body?.data || body;
     const message = data?.message;
     const key = data?.key;
 
-    // Ignorar mensagens enviadas por nós (já salvas pelo sendWhatsAppMessage)
+    // Ignorar mensagens enviadas por nós
     if (key?.fromMe === true) {
-      console.log("Ignorado: mensagem própria (fromMe)");
+      console.log("Ignorado: mensagem própria");
       return Response.json({ status: "ignored - own message" });
+    }
+
+    // Ignorar eventos que não são de mensagem
+    if (event && !["messages.upsert", "MESSAGES_UPSERT", "message", "messages.update"].includes(event)) {
+      console.log("Evento ignorado:", event);
+      return Response.json({ status: "ignored - event: " + event });
     }
 
     // Log completo do key para debug do @lid
@@ -183,19 +176,6 @@ Deno.serve(async (req) => {
       phone = phone.slice(0, 4) + "9" + phone.slice(4);
     }
     const pushName = data?.pushName || data?.notifyName || "";
-    // Detectar tipo de mídia para usar texto padrão quando não há legenda
-    const messageType = message ? Object.keys(message)[0] : null;
-    const mediaFallback = {
-      audioMessage: "[Áudio]",
-      imageMessage: "[Imagem]",
-      videoMessage: "[Vídeo]",
-      documentMessage: "[Documento]",
-      stickerMessage: "[Sticker]",
-      locationMessage: "[Localização]",
-      contactMessage: "[Contato]",
-      reactionMessage: null, // ignorar reações
-    };
-
     const messageText = message?.conversation
       || message?.extendedTextMessage?.text
       || message?.imageMessage?.caption
@@ -205,14 +185,12 @@ Deno.serve(async (req) => {
       || message?.stickerMessage?.caption
       || data?.body
       || body?.body
-      || (messageType && messageType in mediaFallback ? mediaFallback[messageType] : "")
       || "";
 
-    console.log(`phone="${phone}" | tipo="${messageType}" | texto="${messageText}" | pushName="${pushName}"`);
+    console.log(`phone="${phone}" | texto="${messageText}" | pushName="${pushName}"`);
 
-    // Ignorar reações e mensagens sem conteúdo identificável
-    if (!phone || !messageText || messageText === null) {
-      console.log("Ignorado: sem telefone ou texto. remoteJid:", phoneRaw, "| messageType:", messageType, "| messageKeys:", Object.keys(message || {}));
+    if (!phone || !messageText) {
+      console.log("Ignorado: sem telefone ou texto. remoteJid:", phoneRaw, "| messageKeys:", Object.keys(message || {}));
       return Response.json({ status: "ignored - no content" });
     }
 
@@ -255,11 +233,8 @@ Deno.serve(async (req) => {
       20
     );
 
-    // Não gerar resposta de IA para mídias sem texto (áudio, imagem sem legenda, etc.)
-    const isMediaOnly = ["[Áudio]", "[Imagem]", "[Vídeo]", "[Documento]", "[Sticker]", "[Localização]", "[Contato]"].includes(messageText);
-
     // Gerar resposta de IA
-    const aiResponse = isMediaOnly ? null : await getAIResponse(base44.asServiceRole, messageText, contact.name || pushName, messageHistory);
+    const aiResponse = await getAIResponse(base44.asServiceRole, messageText, contact.name || pushName, messageHistory);
 
     if (!aiResponse) {
       console.log(`Iza optou por silêncio para ${phone}`);
