@@ -4,10 +4,9 @@ import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Send, Search, MessageCircle, Phone, RefreshCw, Wifi, WifiOff } from "lucide-react";
+import { Send, Search, MessageCircle, Phone, RefreshCw } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { useEvolutionSocket } from "@/hooks/useEvolutionSocket";
 
 export default function Chat() {
   const queryClient = useQueryClient();
@@ -15,7 +14,6 @@ export default function Chat() {
   const [search, setSearch] = useState("");
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
-  const [socketConnected, setSocketConnected] = useState(false);
   const messagesEndRef = useRef(null);
   const selectedContactRef = useRef(selectedContact);
   selectedContactRef.current = selectedContact;
@@ -23,7 +21,6 @@ export default function Chat() {
   const { data: contacts = [], isLoading } = useQuery({
     queryKey: ["contacts"],
     queryFn: () => base44.entities.Contact.list("-last_contact_date"),
-    refetchInterval: 10000,
   });
 
   const { data: allMessages = [], refetch: refetchMessages } = useQuery({
@@ -35,42 +32,36 @@ export default function Chat() {
     enabled: !!selectedContact,
   });
 
-  // Socket.io - receber mensagens em tempo real
-  useEvolutionSocket({
-    onNewMessage: (msg) => {
-      queryClient.invalidateQueries({ queryKey: ["contacts"] });
-      if (selectedContactRef.current?.phone === msg.phone) {
-        queryClient.invalidateQueries({ queryKey: ["messages", msg.phone] });
+  // Tempo real via subscriptions do Base44 (funciona sempre, sem CORS)
+  useEffect(() => {
+    const unsubMsg = base44.entities.Message.subscribe((event) => {
+      const phone = event.data?.contact_phone;
+      if (phone) {
+        if (selectedContactRef.current?.phone === phone) {
+          queryClient.invalidateQueries({ queryKey: ["messages", phone] });
+        }
+        queryClient.invalidateQueries({ queryKey: ["contacts"] });
       }
-    },
-    onConnectionChange: (connected) => setSocketConnected(connected),
-  });
-
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
+    });
+    return unsubMsg;
+  }, [queryClient]);
 
   useEffect(() => {
-    scrollToBottom();
-  }, [allMessages]);
-
-  // Subscribe to real-time updates (Base44)
-  useEffect(() => {
-    const unsub = base44.entities.Message.subscribe((event) => {
-      if (selectedContact && event.data?.contact_phone === selectedContact.phone) {
-        queryClient.invalidateQueries({ queryKey: ["messages", selectedContact.phone] });
-      }
+    const unsubContact = base44.entities.Contact.subscribe(() => {
       queryClient.invalidateQueries({ queryKey: ["contacts"] });
     });
-    return unsub;
-  }, [selectedContact, queryClient]);
+    return unsubContact;
+  }, [queryClient]);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [allMessages]);
 
   const sendMessage = async () => {
     if (!message.trim() || !selectedContact || sending) return;
     const text = message.trim();
     setMessage("");
     setSending(true);
-
     try {
       await base44.functions.invoke("sendWhatsAppMessage", {
         phone: selectedContact.phone,
@@ -106,9 +97,6 @@ export default function Chat() {
           <div className="flex items-center gap-2 mb-3">
             <MessageCircle className="w-5 h-5 text-white" />
             <h1 className="font-bold text-lg text-white">WhatsApp</h1>
-            <div className="ml-auto flex items-center gap-1" title={socketConnected ? "Socket conectado" : "Socket desconectado"}>
-              {socketConnected ? <Wifi className="w-4 h-4 text-green-300" /> : <WifiOff className="w-4 h-4 text-red-300" />}
-            </div>
           </div>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
