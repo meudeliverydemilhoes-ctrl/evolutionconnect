@@ -4,7 +4,8 @@ import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Send, Search, MessageCircle, Phone, RefreshCw } from "lucide-react";
+import { Send, Search, MessageCircle, Phone, RefreshCw, Wifi, WifiOff } from "lucide-react";
+import { useEvolutionSocket } from "@/hooks/useEvolutionSocket";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
@@ -15,9 +16,18 @@ export default function Chat() {
   const [search, setSearch] = useState("");
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
+  const [socketConnected, setSocketConnected] = useState(false);
   const messagesEndRef = useRef(null);
   const selectedContactRef = useRef(selectedContact);
   selectedContactRef.current = selectedContact;
+
+  useEvolutionSocket({
+    onNewMessage: (msg) => {
+      queryClient.invalidateQueries({ queryKey: ["messages", msg.phone] });
+      queryClient.invalidateQueries({ queryKey: ["contacts"] });
+    },
+    onConnectionChange: setSocketConnected,
+  });
 
   const { data: contacts = [], isLoading } = useQuery({
     queryKey: ["contacts"],
@@ -99,7 +109,10 @@ export default function Chat() {
           <div className="flex items-center gap-2 mb-3">
             <MessageCircle className="w-5 h-5 text-white" />
             <h1 className="font-bold text-lg text-white">WhatsApp</h1>
-
+            <span className="ml-auto flex items-center gap-1 text-xs text-white/80">
+              {socketConnected ? <Wifi className="w-3 h-3 text-green-300" /> : <WifiOff className="w-3 h-3 text-red-300" />}
+              {socketConnected ? "Online" : "Reconectando..."}
+            </span>
           </div>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />

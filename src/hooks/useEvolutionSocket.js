@@ -72,8 +72,7 @@ export function useEvolutionSocket({ onNewMessage, onConnectionChange }) {
 
     console.log("[Socket] Nova mensagem de", msg.phone, "(fromMe:", msg.fromMe, "):", msg.text);
 
-    // Aguardar 2s para dar chance ao webhook processar primeiro
-    await new Promise(r => setTimeout(r, 2000));
+
 
     // Chamar função backend para salvar + IA (com deduplicação interna)
     try {
