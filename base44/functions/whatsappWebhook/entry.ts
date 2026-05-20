@@ -205,15 +205,25 @@ Deno.serve(async (req) => {
       phone = phone.slice(0, 4) + "9" + phone.slice(4);
     }
     const pushName = data?.pushName || data?.notifyName || "";
+    // Detectar tipo de mídia
+    const isAudio = !!(message?.audioMessage || message?.pttMessage);
+    const isImage = !!message?.imageMessage;
+    const isVideo = !!message?.videoMessage;
+    const isDocument = !!message?.documentMessage;
+    const isSticker = !!message?.stickerMessage;
+
     const messageText = message?.conversation
       || message?.extendedTextMessage?.text
       || message?.imageMessage?.caption
       || message?.videoMessage?.caption
-      || message?.audioMessage?.caption
       || message?.documentMessage?.caption
-      || message?.stickerMessage?.caption
       || data?.body
       || body?.body
+      || (isAudio ? "[áudio]" : "")
+      || (isImage ? "[imagem]" : "")
+      || (isVideo ? "[vídeo]" : "")
+      || (isDocument ? "[documento]" : "")
+      || (isSticker ? "[sticker]" : "")
       || "";
 
     console.log(`phone="${phone}" | texto="${messageText}" | pushName="${pushName}"`);
