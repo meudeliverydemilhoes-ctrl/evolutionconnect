@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Send, Search, MessageCircle, Phone, RefreshCw, Wifi, WifiOff } from "lucide-react";
+import { Link } from "react-router-dom";
 import { useEvolutionSocket } from "@/hooks/useEvolutionSocket";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -111,7 +112,9 @@ export default function Chat() {
             <h1 className="font-bold text-lg text-white">WhatsApp</h1>
             <span className="ml-auto flex items-center gap-1 text-xs text-white/80">
               {socketConnected ? <Wifi className="w-3 h-3 text-green-300" /> : <WifiOff className="w-3 h-3 text-red-300" />}
-              {socketConnected ? "Online" : "Reconectando..."}
+              {socketConnected ? "Online" : (
+                <Link to="/whatsapp-connect" className="text-red-300 hover:text-red-100 underline">Reconectar</Link>
+              )}
             </span>
           </div>
           <div className="relative">

@@ -9,6 +9,7 @@ import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import Contacts from "./pages/Contacts";
 import Orders from "./pages/Orders";
 import WhatsAppSetup from "./pages/WhatsAppSetup";
+import WhatsAppConnect from "./pages/WhatsAppConnect";
 import Chat from "./pages/Chat";
 
 const AuthenticatedApp = () => {
@@ -42,6 +43,7 @@ const AuthenticatedApp = () => {
       <Route path="/contacts" element={<Contacts />} />
       <Route path="/orders" element={<Orders />} />
       <Route path="/whatsapp-setup" element={<WhatsAppSetup />} />
+      <Route path="/whatsapp-connect" element={<WhatsAppConnect />} />
       <Route path="*" element={<PageNotFound />} />
     </Routes>
   );
