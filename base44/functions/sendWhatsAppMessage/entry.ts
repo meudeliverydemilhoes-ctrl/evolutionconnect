@@ -9,6 +9,10 @@ Deno.serve(async (req) => {
       return Response.json({ error: "phone e message são obrigatórios" }, { status: 400 });
     }
 
+    const EVOLUTION_API_URL = Deno.env.get("EVOLUTION_API_URL");
+    const EVOLUTION_API_KEY = Deno.env.get("EVOLUTION_API_KEY");
+    const EVOLUTION_INSTANCE = Deno.env.get("EVOLUTION_INSTANCE");
+
     const url = `${EVOLUTION_API_URL}/message/sendText/${EVOLUTION_INSTANCE}`;
     const res = await fetch(url, {
       method: "POST",
