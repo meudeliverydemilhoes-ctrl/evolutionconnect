@@ -39,6 +39,7 @@ export default function Chat() {
     date: "",
     time: "",
     duration: 30,
+    email: "",
     notes: ""
   });
 
@@ -52,9 +53,10 @@ export default function Chat() {
       duration_minutes: meetingForm.duration,
       notes: meetingForm.notes,
       contact_name: selectedContact.name || selectedContact.phone,
-      contact_phone: selectedContact.phone
+      contact_phone: selectedContact.phone,
+      contact_email: meetingForm.email
     });
-    setMeetingForm({ title: "", date: "", time: "", duration: 30, notes: "" });
+    setMeetingForm({ title: "", date: "", time: "", duration: 30, email: "", notes: "" });
     setShowScheduleModal(false);
     setSchedulingMeeting(false);
   };
@@ -704,6 +706,15 @@ export default function Chat() {
                       step="15"
                       value={meetingForm.duration}
                       onChange={e => setMeetingForm({...meetingForm, duration: parseInt(e.target.value)})}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-gray-600 block mb-1">E-mail do Cliente</label>
+                    <Input
+                      type="email"
+                      placeholder="cliente@email.com"
+                      value={meetingForm.email}
+                      onChange={e => setMeetingForm({...meetingForm, email: e.target.value})}
                     />
                   </div>
                   <div>

@@ -85,21 +85,42 @@ Deno.serve(async (req) => {
     const endDateStr = endTime.toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', timeStyle: 'short' });
 
     // Enviar por e-mail (para o usuário + cliente se tiver email)
+    const emailBody = `
+      <h2>Reunião Agendada ✓</h2>
+      <p><strong>Assunto:</strong> ${meeting.title || `Reunião com ${meeting.contact_name || 'Cliente'}`}</p>
+      <p><strong>Data:</strong> ${dateStr}</p>
+      <p><strong>Duração:</strong> ${meeting.duration_minutes || 60} minutos</p>
+      ${meeting.contact_name ? `<p><strong>Cliente:</strong> ${meeting.contact_name}</p>` : ''}
+      ${meeting.contact_phone ? `<p><strong>WhatsApp:</strong> ${meeting.contact_phone}</p>` : ''}
+      ${meetLink ? `<p><strong>Link Google Meet:</strong> <a href="${meetLink}">${meetLink}</a></p>` : ''}
+      ${meeting.notes ? `<p><strong>Notas:</strong> ${meeting.notes}</p>` : ''}
+    `;
+
+    // Enviar para o usuário
     if (userEmail) {
-      const emailBody = `
-        <h2>Reunião Agendada ✓</h2>
-        <p><strong>Assunto:</strong> ${meeting.title || `Reunião com ${meeting.contact_name || 'Cliente'}`}</p>
-        <p><strong>Data:</strong> ${dateStr}</p>
-        <p><strong>Duração:</strong> ${meeting.duration_minutes || 60} minutos</p>
-        ${meeting.contact_name ? `<p><strong>Cliente:</strong> ${meeting.contact_name}</p>` : ''}
-        ${meeting.contact_phone ? `<p><strong>WhatsApp:</strong> ${meeting.contact_phone}</p>` : ''}
-        ${meetLink ? `<p><strong>Link Google Meet:</strong> <a href="${meetLink}">${meetLink}</a></p>` : ''}
-        ${meeting.notes ? `<p><strong>Notas:</strong> ${meeting.notes}</p>` : ''}
-      `;
       await base44.integrations.Core.SendEmail({
         to: userEmail,
         subject: `Reunião agendada: ${meeting.title || meeting.contact_name || 'Novo agendamento'}`,
         body: emailBody,
+      });
+    }
+
+    // Enviar para o cliente se tiver e-mail
+    if (meeting.contact_email) {
+      const clientEmailBody = `
+        <h2>Confirmação de Reunião</h2>
+        <p>Olá${meeting.contact_name ? ` ${meeting.contact_name}` : ''}!</p>
+        <p>Sua reunião está confirmada com os seguintes detalhes:</p>
+        <p><strong>Assunto:</strong> ${meeting.title || 'Reunião'}</p>
+        <p><strong>Data:</strong> ${dateStr}</p>
+        <p><strong>Duração:</strong> ${meeting.duration_minutes || 60} minutos</p>
+        ${meetLink ? `<p><strong>Link Google Meet:</strong> <a href="${meetLink}" style="color: #00a884; text-decoration: none; font-weight: bold;">${meetLink}</a></p>` : ''}
+        <p>Qualquer dúvida, entre em contato!</p>
+      `;
+      await base44.integrations.Core.SendEmail({
+        to: meeting.contact_email,
+        subject: `Confirmação de Reunião: ${meeting.title || 'Novo Agendamento'}`,
+        body: clientEmailBody,
       });
     }
 
