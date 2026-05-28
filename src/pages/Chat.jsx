@@ -42,6 +42,7 @@ export default function Chat() {
         ? base44.entities.Message.filter({ contact_phone: selectedContact.phone }, "timestamp", 100)
         : [],
     enabled: !!selectedContact,
+    refetchInterval: 5000, // fallback polling caso socket/subscription falhe
   });
 
   // Tempo real via subscriptions do Base44 (apenas para mensagens recebidas)

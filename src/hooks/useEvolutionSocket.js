@@ -84,7 +84,11 @@ export function useEvolutionSocket({ onNewMessage, onConnectionChange }) {
       fromMe: msg.fromMe,
     })
       .then(() => onNewMessageRef.current?.(msg))
-      .catch(err => console.error("[Socket] Erro ao chamar processSocketMessage:", err));
+      .catch(err => {
+        console.error("[Socket] Erro ao chamar processSocketMessage:", err);
+        // Mesmo com erro, tenta atualizar UI
+        onNewMessageRef.current?.(msg);
+      });
   }, []);
 
   useEffect(() => {
