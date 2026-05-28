@@ -76,6 +76,12 @@ export default function Chat() {
     setMessage("");
     setSending(true);
     try {
+      // Mostrar mensagem imediatamente na tela (otimista)
+      queryClient.setQueryData(["messages", selectedContact.phone], (old = []) => [
+        ...old,
+        { id: `temp-${Date.now()}`, contact_phone: selectedContact.phone, text, direction: "sent", timestamp: new Date().toISOString() }
+      ]);
+
       await base44.functions.invoke("sendWhatsAppMessage", {
         phone: selectedContact.phone,
         message: text,
