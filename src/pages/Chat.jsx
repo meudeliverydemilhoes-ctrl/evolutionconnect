@@ -35,14 +35,20 @@ export default function Chat() {
     queryFn: () => base44.entities.Contact.list("-last_contact_date"),
   });
 
-  const { data: allMessages = [], refetch: refetchMessages } = useQuery({
+  const { data: allMessages = [], refetch: refetchMessages, isError: msgError } = useQuery({
     queryKey: ["messages", selectedContact?.phone],
-    queryFn: () =>
-      selectedContact
-        ? base44.entities.Message.filter({ contact_phone: selectedContact.phone }, "timestamp", 100)
-        : [],
+    queryFn: async () => {
+      if (!selectedContact) return [];
+      const msgs = await base44.entities.Message.filter(
+        { contact_phone: selectedContact.phone },
+        "created_date",
+        200
+      );
+      console.log("[Chat] mensagens carregadas para", selectedContact.phone, ":", msgs?.length, msgs);
+      return msgs || [];
+    },
     enabled: !!selectedContact,
-    refetchInterval: 5000, // fallback polling caso socket/subscription falhe
+    refetchInterval: 5000,
   });
 
   // Tempo real via subscriptions do Base44 (apenas para mensagens recebidas)
