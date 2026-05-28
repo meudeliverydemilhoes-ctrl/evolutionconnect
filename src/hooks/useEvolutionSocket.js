@@ -29,7 +29,6 @@ function extractMessage(data) {
 
   const fromMe = key.fromMe === true;
   const remoteJid = key.remoteJid || "";
-  if (remoteJid.includes("@g.us")) return null;
 
   // Suporte ao @lid: tentar todas as alternativas de JID disponíveis
   const rawJid =
