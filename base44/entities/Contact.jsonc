@@ -14,6 +14,10 @@
       "type": "string",
       "description": "Email do contato"
     },
+    "profile_pic": {
+      "type": "string",
+      "description": "URL da foto de perfil do WhatsApp"
+    },
     "last_message": {
       "type": "string",
       "description": "\u00daltima mensagem recebida"
