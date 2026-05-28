@@ -47,7 +47,6 @@ export default function Chat() {
     if (!meetingForm.title || !meetingForm.date || !meetingForm.time || !selectedContact?.phone) return;
     setSchedulingMeeting(true);
     try {
-      // Se tem e-mail, salva no contato também
       if (meetingForm.email) {
         try {
           await base44.entities.Contact.update(selectedContact.id, { email: meetingForm.email });
@@ -67,7 +66,6 @@ export default function Chat() {
         contact_email: meetingForm.email
       });
       
-      // Toast com detalhes do que foi enviado
       const messages = [];
       if (response.data?.meetLink) messages.push(`✅ Google Meet criado`);
       if (meetingForm.email) messages.push(`✅ E-mail enviado para ${meetingForm.email}`);
@@ -151,6 +149,7 @@ export default function Chat() {
     setSummary(result);
     setSummarizing(false);
   };
+
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const selectedContactRef = useRef(selectedContact);
@@ -209,7 +208,6 @@ export default function Chat() {
     queryFn: () => base44.entities.Contact.list("-last_contact_date"),
   });
 
-  // Deduplicate by phone (use full phone as key to preserve group JIDs like xxx@g.us)
   const contacts = Object.values(
     rawContacts.reduce((acc, c) => {
       const key = c.phone;
@@ -221,9 +219,8 @@ export default function Chat() {
 
   const extractAudio = (msg) => {
     if (!msg) return null;
-    // Tenta extrair áudio de diferentes fontes
     if (msg.audioMessage?.url) return msg.audioMessage.url;
-    if (msg.pttMessage?.url) return msg.pttMessage.url; // Áudio PTT (Push-to-Talk)
+    if (msg.pttMessage?.url) return msg.pttMessage.url;
     return null;
   };
 
@@ -247,7 +244,6 @@ export default function Chat() {
   const fetchProfilePic = async (contact) => {
     if (!contact?.phone) return;
     if (profilePics[contact.phone] !== undefined) return;
-    // Se já salvo na entidade, usa direto
     if (contact.profile_pic) {
       setProfilePics(prev => ({ ...prev, [contact.phone]: contact.profile_pic }));
       return;
@@ -260,14 +256,12 @@ export default function Chat() {
     } catch {}
   };
 
-  // Pré-carrega fotos dos contatos visíveis
   useEffect(() => {
     if (contacts.length > 0) {
       contacts.slice(0, 20).forEach(c => fetchProfilePic(c));
     }
   }, [contacts]);
 
-  // Tempo real via subscriptions do Base44
   useEffect(() => {
     const unsubMsg = base44.entities.Message.subscribe((event) => {
       const phone = event.data?.contact_phone;
@@ -367,7 +361,6 @@ export default function Chat() {
 
   return (
     <div className="flex h-full min-h-0 bg-background overflow-hidden">
-      {/* Sidebar - Contatos */}
       <div className={`${showChat ? 'hidden md:flex' : 'flex'} w-full md:w-80 border-r flex-col bg-white min-h-0 min-w-0`}>
         <div className="p-4 border-b bg-[#075e54]">
           <div className="flex items-center gap-2 mb-3">
@@ -422,16 +415,30 @@ export default function Chat() {
                       )}
                     </div>
                     <p className="text-xs text-[#667781] truncate">{contact.last_message || contact.phone}</p>
+                    {contact.tags?.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {contact.tags.slice(0, 3).map(tagId => {
+                          const tag = tags.find(t => t.id === tagId);
+                          if (!tag) return null;
+                          return (
+                            <span key={tagId} className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium text-white" style={{ backgroundColor: tag.color || '#00a884' }}>
+                              {tag.name}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))
+          )}
         </div>
       </div>
 
-      {/* Área do Chat */}
       <div className={`${showChat ? 'flex' : 'hidden md:flex'} flex-1 flex-col min-h-0 min-w-0`}>
         {selectedContact ? (
           <>
-            {/* Header */}
             <div className="bg-[#f0f2f5] border-b">
-              {/* Linha 1: avatar + info + refresh */}
               <div className="px-3 pt-3 pb-2 flex items-center gap-3">
                 <button className="md:hidden mr-1 text-[#54656f]" onClick={() => setShowChat(false)}>
                   <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
@@ -449,7 +456,6 @@ export default function Chat() {
                   <RefreshCw className="w-4 h-4 text-[#54656f]" />
                 </Button>
               </div>
-              {/* Linha 2: botões de ação */}
               <div className="px-3 pb-2 flex items-center gap-2 border-t border-black/5 pt-2">
                 {selectedContact.tags?.length > 0 && (
                   <div className="flex flex-wrap gap-1 flex-1 min-w-0">
@@ -587,7 +593,6 @@ export default function Chat() {
               </div>
             </div>
 
-            {/* Mensagens */}
             <div
               ref={messagesContainerRef}
               className="flex-1 overflow-y-auto p-4 space-y-2"
@@ -804,7 +809,6 @@ export default function Chat() {
               </DialogContent>
             </Dialog>
 
-            {/* Input */}
             <div className="p-3 bg-[#f0f2f5] border-t flex items-center gap-2">
               <Input
                 className="flex-1 bg-white rounded-full border-0 shadow-sm px-4"
