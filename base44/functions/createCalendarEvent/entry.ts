@@ -21,6 +21,8 @@ Deno.serve(async (req) => {
     // Suporte a chamada direta (frontend) e automação de entidade
     const meeting = body.data || body;
 
+    console.log('🔍 Dados recebidos:', { title: meeting.title, contact_name: meeting.contact_name, contact_phone: meeting.contact_phone, contact_email: meeting.contact_email });
+
     if (!meeting?.date) {
       return Response.json({ error: 'Data da reunião não informada' }, { status: 400 });
     }
