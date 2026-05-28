@@ -39,7 +39,7 @@ export default function Chat() {
     date: "",
     time: "",
     duration: 30,
-    email: "",
+    email: selectedContact?.email || "",
     notes: ""
   });
 
@@ -47,6 +47,15 @@ export default function Chat() {
     if (!meetingForm.title || !meetingForm.date || !meetingForm.time || !selectedContact?.phone) return;
     setSchedulingMeeting(true);
     try {
+      // Se tem e-mail, salva no contato também
+      if (meetingForm.email) {
+        try {
+          await base44.entities.Contact.update(selectedContact.id, { email: meetingForm.email });
+        } catch (e) {
+          console.log('Erro ao atualizar e-mail do contato:', e.message);
+        }
+      }
+      
       const dateTime = new Date(`${meetingForm.date}T${meetingForm.time}`);
       const response = await base44.functions.invoke("createCalendarEvent", {
         title: meetingForm.title,
@@ -73,6 +82,7 @@ export default function Chat() {
       setMeetingForm({ title: "", date: "", time: "", duration: 30, email: "", notes: "" });
       setShowScheduleModal(false);
       queryClient.invalidateQueries({ queryKey: ["messages", selectedContact.phone] });
+      queryClient.invalidateQueries({ queryKey: ["contacts"] });
     } catch (error) {
       import('sonner').then(({ toast }) => {
         toast.error(`Erro ao agendar: ${error.message}`);
@@ -478,7 +488,10 @@ export default function Chat() {
                     {analyzing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
                     Análise SDR
                   </Button>
-                  <Button size="sm" variant="ghost" className="gap-1 text-[#00a884] text-xs h-7 px-2" onClick={() => setShowScheduleModal(true)}>
+                  <Button size="sm" variant="ghost" className="gap-1 text-[#00a884] text-xs h-7 px-2" onClick={() => {
+                    setMeetingForm(prev => ({ ...prev, email: selectedContact?.email || "" }));
+                    setShowScheduleModal(true);
+                  }}>
                     <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h18M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                     Agendar
                   </Button>
