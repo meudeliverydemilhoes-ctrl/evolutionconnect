@@ -86,8 +86,8 @@ export default function Chat() {
 
       await base44.functions.invoke("sendWhatsAppMessage", { phone, message: text });
 
-      // Não invalidar mensagens aqui — o update otimista já mostra a mensagem
-      // A subscription e o refetchOnWindowFocus cuidam das atualizações
+      // Re-buscar mensagens reais após envio (remove temp e mostra a salva no DB)
+      queryClient.invalidateQueries({ queryKey });
       queryClient.invalidateQueries({ queryKey: ["contacts"] });
     } catch (e) {
       console.error(e);
