@@ -33,9 +33,23 @@ export default function Reunioes() {
   });
 
   const save = useMutation({
-    mutationFn: (data) => editing ? base44.entities.Meeting.update(editing.id, data) : base44.entities.Meeting.create(data),
+    mutationFn: async (data) => {
+      // Se tem e-mail, salva no contato também
+      if (data.contact_phone && data.contact_email) {
+        try {
+          const contacts = await base44.entities.Contact.filter({ phone: data.contact_phone });
+          if (contacts?.length > 0) {
+            await base44.entities.Contact.update(contacts[0].id, { email: data.contact_email });
+          }
+        } catch (e) {
+          console.log('Erro ao atualizar e-mail do contato:', e.message);
+        }
+      }
+      return editing ? base44.entities.Meeting.update(editing.id, data) : base44.entities.Meeting.create(data);
+    },
     onSuccess: async (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["meetings"] });
+      queryClient.invalidateQueries({ queryKey: ["contacts"] });
       setShowForm(false);
       setEditing(null);
       setForm(emptyForm);
@@ -53,12 +67,32 @@ export default function Reunioes() {
     },
   });
 
-  const remove = useMutation({
-    mutationFn: (id) => base44.entities.Meeting.delete(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["meetings"] }),
-  });
-
-  const openEdit = (m) => { setEditing(m); setForm({ title: m.title, contact_name: m.contact_name || "", contact_phone: m.contact_phone || "", contact_email: m.contact_email || "", date: m.date?.slice(0, 16) || "", duration_minutes: m.duration_minutes || 60, notes: m.notes || "", result: m.result || "agendado" }); setShowForm(true); };
+  const openEdit = async (m) => { 
+    let email = m.contact_email || "";
+    // Se não tem e-mail na reunião, tenta buscar do contato
+    if (!email && m.contact_phone) {
+      try {
+        const contacts = await base44.entities.Contact.filter({ phone: m.contact_phone });
+        if (contacts?.length > 0) {
+          email = contacts[0].email || "";
+        }
+      } catch (e) {
+        console.log('Erro ao buscar e-mail do contato:', e.message);
+      }
+    }
+    setEditing(m); 
+    setForm({ 
+      title: m.title, 
+      contact_name: m.contact_name || "", 
+      contact_phone: m.contact_phone || "", 
+      contact_email: email, 
+      date: m.date?.slice(0, 16) || "", 
+      duration_minutes: m.duration_minutes || 60, 
+      notes: m.notes || "", 
+      result: m.result || "agendado" 
+    }); 
+    setShowForm(true); 
+  };
 
   const generateAnalysis = async (meeting) => {
     setGeneratingAI(meeting.id);
