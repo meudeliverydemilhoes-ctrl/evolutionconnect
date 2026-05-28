@@ -271,13 +271,26 @@ export default function Chat() {
                 <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
               </button>
               <ContactAvatar contact={selectedContact} size="sm" />
-              <div className="flex-1">
+              <div className="flex-1 min-w-0">
                 <p className="font-semibold text-[#111b21]">{selectedContact.name || selectedContact.phone}</p>
                 <div className="flex items-center gap-2">
                   <Phone className="w-3 h-3 text-[#667781]" />
                   <span className="text-xs text-[#667781]">{selectedContact.phone}</span>
                   <Badge className={`text-xs ${statusColor[selectedContact.status]}`}>{selectedContact.status}</Badge>
                 </div>
+                {selectedContact.tags?.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {selectedContact.tags.map(tagId => {
+                      const tag = tags.find(t => t.id === tagId);
+                      if (!tag) return null;
+                      return (
+                        <span key={tagId} className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium text-white" style={{ backgroundColor: tag.color || '#00a884' }}>
+                          {tag.name}
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
               <Popover>
                 <PopoverTrigger asChild>
