@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
 import { appParams } from "@/lib/app-params";
 import { useState } from "react";
+import { Loader2 } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { base44 } from "@/api/base44Client";
 
@@ -12,6 +13,19 @@ export default function WhatsAppSetup() {
   const { toast } = useToast();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [testingWebhook, setTestingWebhook] = useState(false);
+
+  const handleTestWebhook = async () => {
+    setTestingWebhook(true);
+    try {
+      await base44.functions.invoke("setupWebhook", {});
+      toast({ title: "Webhook configurado!", description: "O webhook foi registrado com sucesso na Evolution API." });
+    } catch (error) {
+      toast({ title: "Erro", description: error.message || "Falha ao configurar webhook", variant: "destructive" });
+    } finally {
+      setTestingWebhook(false);
+    }
+  };
 
   const handleDeleteAllData = async () => {
     setDeleting(true);
@@ -64,6 +78,10 @@ export default function WhatsAppSetup() {
                 </Button>
               </div>
             </div>
+            <Button onClick={handleTestWebhook} disabled={testingWebhook} className="w-full gap-2">
+              {testingWebhook && <Loader2 className="w-4 h-4 animate-spin" />}
+              {testingWebhook ? "Configurando..." : "Testar e Configurar Webhook"}
+            </Button>
             <div className="text-sm space-y-1">
               <p>✅ <strong>Eventos a ativar:</strong> <code>messages.upsert</code></p>
               <p>✅ <strong>Método:</strong> POST</p>
