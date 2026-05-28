@@ -132,10 +132,11 @@ Deno.serve(async (req) => {
         <p>Qualquer dúvida, entre em contato!</p>
       `;
       try {
-        await base44.integrations.Core.SendEmail({
+        await base44.asServiceRole.functions.invoke('sendClientEmail', {
           to: meeting.contact_email,
           subject: `Confirmação de Reunião: ${meeting.title || 'Novo Agendamento'}`,
           body: clientEmailBody,
+          from_name: 'CRM WhatsApp',
         });
         console.log('✅ E-mail enviado com sucesso para:', meeting.contact_email);
       } catch (e) {
