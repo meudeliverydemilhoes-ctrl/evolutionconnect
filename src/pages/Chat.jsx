@@ -41,10 +41,20 @@ export default function Chat() {
     queryFn: () => base44.entities.Tag.list(),
   });
 
-  const { data: contacts = [], isLoading } = useQuery({
+  const { data: rawContacts = [], isLoading } = useQuery({
     queryKey: ["contacts"],
     queryFn: () => base44.entities.Contact.list("-last_contact_date"),
   });
+
+  // Deduplicate by phone, keeping the most recent/complete contact
+  const contacts = Object.values(
+    rawContacts.reduce((acc, c) => {
+      const key = c.phone?.replace(/\D/g, '');
+      if (!key) return acc;
+      if (!acc[key]) { acc[key] = c; }
+      return acc;
+    }, {})
+  );
 
   const { data: allMessages = [], refetch: refetchMessages } = useQuery({
     queryKey: ["messages", selectedContact?.phone],
