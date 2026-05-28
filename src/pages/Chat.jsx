@@ -113,9 +113,9 @@ export default function Chat() {
   };
 
   return (
-    <div className="flex h-full bg-background">
+    <div className="flex h-full min-h-0 bg-background">
       {/* Sidebar - Contatos */}
-      <div className="w-80 border-r flex flex-col bg-white">
+      <div className="w-80 border-r flex flex-col bg-white min-h-0 min-w-0">
         <div className="p-4 border-b bg-[#075e54]">
           <div className="flex items-center gap-2 mb-3">
             <MessageCircle className="w-5 h-5 text-white" />
@@ -179,7 +179,7 @@ export default function Chat() {
       </div>
 
       {/* Área do Chat */}
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col min-h-0 min-w-0">
         {selectedContact ? (
           <>
             {/* Header */}
