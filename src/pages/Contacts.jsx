@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,25 @@ export default function Contacts() {
   const [form, setForm] = useState({ name: "", phone: "", email: "", status: "ativo", notes: "" });
   const [showDupModal, setShowDupModal] = useState(false);
   const [deduping, setDeduping] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const containerRef = React.useRef(null);
+
+  const handlePullToRefresh = (e) => {
+    if (containerRef.current?.scrollTop === 0 && e.touches) {
+      const touch = e.touches[0];
+      const startY = touch.clientY;
+      const onTouchMove = (moveEvent) => {
+        const currentY = moveEvent.touches[0].clientY;
+        if (currentY - startY > 80) {
+          setIsRefreshing(true);
+          queryClient.invalidateQueries({ queryKey: ["contacts"] });
+          setTimeout(() => setIsRefreshing(false), 500);
+          document.removeEventListener('touchmove', onTouchMove);
+        }
+      };
+      document.addEventListener('touchmove', onTouchMove, { once: true });
+    }
+  };
 
   const { data: tags = [] } = useQuery({
     queryKey: ["tags"],
@@ -38,6 +57,23 @@ export default function Contacts() {
     mutationFn: (data) => editingContact
       ? base44.entities.Contact.update(editingContact.id, data)
       : base44.entities.Contact.create(data),
+    onMutate: async (newData) => {
+      await queryClient.cancelQueries({ queryKey: ["contacts"] });
+      const previousContacts = queryClient.getQueryData(["contacts"]);
+      if (editingContact) {
+        queryClient.setQueryData(["contacts"], (old) =>
+          old.map(c => c.id === editingContact.id ? { ...c, ...newData } : c)
+        );
+      } else {
+        queryClient.setQueryData(["contacts"], (old) => [...(old || []), { ...newData, id: Date.now() }]);
+      }
+      return { previousContacts };
+    },
+    onError: (err, newData, context) => {
+      if (context?.previousContacts) {
+        queryClient.setQueryData(["contacts"], context.previousContacts);
+      }
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["contacts"] });
       setShowForm(false);
@@ -92,7 +128,7 @@ export default function Contacts() {
   const statusColor = { ativo: "bg-green-100 text-green-700", inativo: "bg-gray-100 text-gray-600", bloqueado: "bg-red-100 text-red-700" };
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
+    <div className="p-6 max-w-5xl mx-auto" ref={containerRef} onTouchStart={handlePullToRefresh}>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Contatos WhatsApp</h1>
         <div className="flex gap-2">
@@ -113,6 +149,14 @@ export default function Contacts() {
         <Input className="pl-9" placeholder="Buscar por nome ou telefone..." value={search} onChange={e => setSearch(e.target.value)} />
       </div>
 
+      {isRefreshing && (
+        <div className="text-center py-2 mb-4">
+          <div className="inline-flex items-center gap-2 text-xs text-gray-500">
+            <div className="w-4 h-4 border-2 border-gray-300 border-t-gray-500 rounded-full animate-spin"></div>
+            Atualizando...
+          </div>
+        </div>
+      )}
       {isLoading ? (
         <div className="text-center py-12 text-muted-foreground">Carregando...</div>
       ) : (

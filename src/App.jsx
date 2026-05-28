@@ -24,6 +24,7 @@ import WhatsAppSetup from "./pages/WhatsAppSetup";
 import WhatsAppConnect from "./pages/WhatsAppConnect";
 import Issues from "./pages/Issues";
 import Tags from "./pages/Tags";
+import Settings from "./pages/Settings";
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -77,6 +78,7 @@ const AuthenticatedApp = () => {
         <Route path="/whatsapp-connect" element={<WhatsAppConnect />} />
         <Route path="/issues" element={<Issues />} />
         <Route path="/tags" element={<Tags />} />
+        <Route path="/settings" element={<Settings />} />
       </Route>
       <Route path="*" element={<PageNotFound />} />
     </Routes>

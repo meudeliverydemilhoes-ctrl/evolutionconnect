@@ -1,8 +1,8 @@
-import { Link, useLocation, Outlet } from "react-router-dom";
+import { Link, useLocation, Outlet, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { useState } from "react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { Menu, MessageCircle, LayoutDashboard, Kanban, Users, Bot, Bell, Trophy, BarChart2, Sparkles, Video, Zap, Settings, Tag } from "lucide-react";
+import { Menu, MessageCircle, LayoutDashboard, Kanban, Users, Bot, Bell, Trophy, BarChart2, Sparkles, Video, Zap, Settings, Tag, ChevronLeft } from "lucide-react";
 
 const navItems = [
   { to: "/", icon: MessageCircle, label: "Conversas" },
@@ -29,7 +29,10 @@ const bottomNavItems = [
 
 export default function AppLayout() {
   const location = useLocation();
+  const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
+  const pathDepth = location.pathname.split('/').filter(Boolean).length;
+  const canGoBack = pathDepth > 1 || location.pathname !== '/';
 
   return (
     <div className="flex flex-col h-screen bg-background">
@@ -60,7 +63,12 @@ export default function AppLayout() {
 
       {/* Top Bar - Mobile */}
       <div className="md:hidden flex items-center justify-between bg-[#075e54] text-white px-4 py-3 flex-shrink-0 shadow-md" style={{ paddingTop: 'max(12px, env(safe-area-inset-top))' }}>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-1">
+          {canGoBack ? (
+            <button onClick={() => navigate(-1)} className="p-1 rounded hover:bg-white/10 flex-shrink-0">
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+          ) : null}
           <MessageCircle className="w-5 h-5" />
           <span className="font-bold text-base">MeuCRM</span>
         </div>
@@ -96,6 +104,16 @@ export default function AppLayout() {
                   </Link>
                 );
               })}
+              <div className="border-t mt-2">
+                <Link
+                  to="/settings"
+                  onClick={() => setMenuOpen(false)}
+                  className="flex items-center gap-3 px-5 py-3.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  <Settings className="w-4 h-4" />
+                  Configurações
+                </Link>
+              </div>
             </nav>
           </SheetContent>
         </Sheet>
