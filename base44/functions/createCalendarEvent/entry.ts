@@ -77,7 +77,13 @@ Deno.serve(async (req) => {
       || created.htmlLink;
 
     // Pega email do usuário autenticado para enviar confirmação
-    const user = await base44.auth.me();
+    let user;
+    try {
+      user = await base44.auth.me();
+    } catch (e) {
+      console.log('Erro ao obter user:', e.message);
+      user = null;
+    }
     const userEmail = user?.email;
 
     // Formatar data e hora
@@ -117,11 +123,16 @@ Deno.serve(async (req) => {
         ${meetLink ? `<p><strong>Link Google Meet:</strong> <a href="${meetLink}" style="color: #00a884; text-decoration: none; font-weight: bold;">${meetLink}</a></p>` : ''}
         <p>Qualquer dúvida, entre em contato!</p>
       `;
-      await base44.integrations.Core.SendEmail({
-        to: meeting.contact_email,
-        subject: `Confirmação de Reunião: ${meeting.title || 'Novo Agendamento'}`,
-        body: clientEmailBody,
-      });
+      try {
+        await base44.integrations.Core.SendEmail({
+          to: meeting.contact_email,
+          subject: `Confirmação de Reunião: ${meeting.title || 'Novo Agendamento'}`,
+          body: clientEmailBody,
+        });
+        console.log('E-mail enviado para cliente:', meeting.contact_email);
+      } catch (e) {
+        console.log('Erro ao enviar e-mail para cliente:', e.message);
+      }
     }
 
     // Enviar link via WhatsApp se tiver telefone

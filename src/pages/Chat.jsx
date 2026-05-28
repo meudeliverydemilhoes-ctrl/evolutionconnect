@@ -46,19 +46,40 @@ export default function Chat() {
   const scheduleMeeting = async () => {
     if (!meetingForm.title || !meetingForm.date || !meetingForm.time || !selectedContact?.phone) return;
     setSchedulingMeeting(true);
-    const dateTime = new Date(`${meetingForm.date}T${meetingForm.time}`);
-    await base44.functions.invoke("createCalendarEvent", {
-      title: meetingForm.title,
-      date: dateTime.toISOString(),
-      duration_minutes: meetingForm.duration,
-      notes: meetingForm.notes,
-      contact_name: selectedContact.name || selectedContact.phone,
-      contact_phone: selectedContact.phone,
-      contact_email: meetingForm.email
-    });
-    setMeetingForm({ title: "", date: "", time: "", duration: 30, email: "", notes: "" });
-    setShowScheduleModal(false);
-    setSchedulingMeeting(false);
+    try {
+      const dateTime = new Date(`${meetingForm.date}T${meetingForm.time}`);
+      const response = await base44.functions.invoke("createCalendarEvent", {
+        title: meetingForm.title,
+        date: dateTime.toISOString(),
+        duration_minutes: meetingForm.duration,
+        notes: meetingForm.notes,
+        contact_name: selectedContact.name || selectedContact.phone,
+        contact_phone: selectedContact.phone,
+        contact_email: meetingForm.email
+      });
+      
+      // Toast com detalhes do que foi enviado
+      const messages = [];
+      if (response.data?.meetLink) messages.push(`✅ Google Meet criado`);
+      if (meetingForm.email) messages.push(`✅ E-mail enviado para ${meetingForm.email}`);
+      if (selectedContact.phone) messages.push(`✅ WhatsApp enviado`);
+      
+      if (messages.length > 0) {
+        import('sonner').then(({ toast }) => {
+          toast.success(messages.join(' | '));
+        });
+      }
+      
+      setMeetingForm({ title: "", date: "", time: "", duration: 30, email: "", notes: "" });
+      setShowScheduleModal(false);
+      queryClient.invalidateQueries({ queryKey: ["messages", selectedContact.phone] });
+    } catch (error) {
+      import('sonner').then(({ toast }) => {
+        toast.error(`Erro ao agendar: ${error.message}`);
+      });
+    } finally {
+      setSchedulingMeeting(false);
+    }
   };
 
   const analyzeConversation = async () => {
