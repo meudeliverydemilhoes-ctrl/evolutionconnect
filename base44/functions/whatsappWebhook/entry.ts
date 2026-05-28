@@ -186,10 +186,40 @@ Deno.serve(async (req) => {
       || data?.phoneNumber
       || "";
 
-    // Ignorar mensagens de grupos
-    if (remoteJid.includes("@g.us") || phoneRaw.includes("@g.us")) {
-      console.log("Ignorado: mensagem de grupo");
-      return Response.json({ status: "ignored - group message" });
+    // Grupos: salvar como contato/mensagem mas sem acionar IA
+    const isGroup = remoteJid.includes("@g.us");
+    if (isGroup) {
+      const groupPhone = remoteJid;
+      const groupPushName = data?.pushName || data?.notifyName || remoteJid;
+      const groupMessageText = message?.conversation
+        || message?.extendedTextMessage?.text
+        || message?.imageMessage?.caption
+        || data?.body || "";
+      if (groupPhone && groupMessageText) {
+        await base44.asServiceRole.entities.Message.create({
+          contact_phone: groupPhone,
+          text: groupMessageText,
+          direction: "received",
+          timestamp: new Date().toISOString(),
+        });
+        const existing = await base44.asServiceRole.entities.Contact.filter({ phone: groupPhone });
+        if (existing?.length > 0) {
+          await base44.asServiceRole.entities.Contact.update(existing[0].id, {
+            last_message: groupMessageText,
+            last_contact_date: new Date().toISOString(),
+          });
+        } else {
+          await base44.asServiceRole.entities.Contact.create({
+            phone: groupPhone,
+            name: groupPushName,
+            last_message: groupMessageText,
+            last_contact_date: new Date().toISOString(),
+            status: "ativo",
+            tags: [],
+          });
+        }
+      }
+      return Response.json({ status: "ok - group saved" });
     }
 
     if (!phoneRaw) {

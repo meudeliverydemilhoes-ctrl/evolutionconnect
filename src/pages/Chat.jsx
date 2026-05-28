@@ -83,10 +83,10 @@ export default function Chat() {
     queryFn: () => base44.entities.Contact.list("-last_contact_date"),
   });
 
-  // Deduplicate by phone, keeping the most recent/complete contact
+  // Deduplicate by phone (use full phone as key to preserve group JIDs like xxx@g.us)
   const contacts = Object.values(
     rawContacts.reduce((acc, c) => {
-      const key = c.phone?.replace(/\D/g, '');
+      const key = c.phone;
       if (!key) return acc;
       if (!acc[key]) { acc[key] = c; }
       return acc;
