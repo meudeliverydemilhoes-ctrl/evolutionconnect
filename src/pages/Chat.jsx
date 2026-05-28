@@ -313,21 +313,30 @@ export default function Chat() {
         {selectedContact ? (
           <>
             {/* Header */}
-            <div className="p-3 bg-[#f0f2f5] border-b flex items-center gap-3">
-              <button className="md:hidden mr-1 text-[#54656f]" onClick={() => setShowChat(false)}>
-                <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
-              </button>
-              <ContactAvatar contact={selectedContact} size="sm" />
-              <div className="flex-1 min-w-0">
-                <p className="font-semibold text-[#111b21]">{selectedContact.name || selectedContact.phone}</p>
-                <div className="flex items-center gap-2">
-                  <Phone className="w-3 h-3 text-[#667781]" />
-                  <span className="text-xs text-[#667781]">{selectedContact.phone}</span>
-                  <Badge className={`text-xs ${statusColor[selectedContact.status]}`}>{selectedContact.status}</Badge>
+            <div className="bg-[#f0f2f5] border-b">
+              {/* Linha 1: avatar + info + refresh */}
+              <div className="px-3 pt-3 pb-2 flex items-center gap-3">
+                <button className="md:hidden mr-1 text-[#54656f]" onClick={() => setShowChat(false)}>
+                  <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+                </button>
+                <ContactAvatar contact={selectedContact} size="sm" />
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-[#111b21] truncate">{selectedContact.name || selectedContact.phone}</p>
+                  <div className="flex items-center gap-2">
+                    <Phone className="w-3 h-3 text-[#667781]" />
+                    <span className="text-xs text-[#667781] truncate">{selectedContact.phone}</span>
+                    <Badge className={`text-xs flex-shrink-0 ${statusColor[selectedContact.status]}`}>{selectedContact.status}</Badge>
+                  </div>
                 </div>
+                <Button size="icon" variant="ghost" onClick={() => refetchMessages()}>
+                  <RefreshCw className="w-4 h-4 text-[#54656f]" />
+                </Button>
+              </div>
+              {/* Linha 2: botões de ação */}
+              <div className="px-3 pb-2 flex items-center gap-2 border-t border-black/5 pt-2">
                 {selectedContact.tags?.length > 0 && (
-                  <div className="flex flex-wrap gap-1 mt-1">
-                    {selectedContact.tags.map(tagId => {
+                  <div className="flex flex-wrap gap-1 flex-1 min-w-0">
+                    {selectedContact.tags.slice(0, 3).map(tagId => {
                       const tag = tags.find(t => t.id === tagId);
                       if (!tag) return null;
                       return (
@@ -338,113 +347,112 @@ export default function Chat() {
                     })}
                   </div>
                 )}
-              </div>
-              <Popover open={showPipelinePopover} onOpenChange={setShowPipelinePopover}>
-                <PopoverTrigger asChild>
-                  <Button size="sm" variant="ghost" className={`gap-1 text-xs ${pipelineAdded[selectedContact.phone] ? 'text-green-600' : 'text-[#54656f]'}`}>
-                    {pipelineAdded[selectedContact.phone] ? <Check className="w-3.5 h-3.5" /> : <GitBranch className="w-3.5 h-3.5" />}
-                    Pipeline
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-52 p-2" align="end">
-                  <p className="text-xs font-semibold text-gray-500 mb-2 px-1">ADICIONAR AO PIPELINE</p>
-                  {pipelineStages.map(stage => (
-                    <button
-                      key={stage.id}
-                      onClick={() => addToPipeline.mutate(stage.id)}
-                      disabled={addToPipeline.isPending}
-                      className="flex items-center gap-2 w-full px-2 py-1.5 rounded-lg hover:bg-gray-50 text-sm text-left transition-colors"
-                    >
-                      <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: stage.color || '#6b7280' }} />
-                      <span>{stage.label}</span>
-                      {pipelineAdded[selectedContact.phone] === stage.id && <Check className="w-3 h-3 text-green-500 ml-auto" />}
-                    </button>
-                  ))}
-                </PopoverContent>
-              </Popover>
-
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button size="sm" variant="ghost" className="gap-1 text-[#54656f] text-xs">
-                    <Tag className="w-3.5 h-3.5" />
-                    Etiquetas
-                    {selectedContact.tags?.length > 0 && (
-                      <span className="ml-0.5 bg-[#00a884] text-white rounded-full w-4 h-4 flex items-center justify-center text-[9px] font-bold">{selectedContact.tags.length}</span>
-                    )}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-64 p-3" align="end">
-                  <p className="text-xs font-semibold text-gray-500 mb-2">ETIQUETAS</p>
-                  {tags.length === 0 ? (
-                    <p className="text-xs text-gray-400 mb-2">Nenhuma etiqueta criada ainda.</p>
-                  ) : (
-                    <div className="flex flex-col gap-1 mb-2">
-                      {tags.map(tag => {
-                        const active = selectedContact.tags?.includes(tag.id);
-                        return (
-                          <button
-                            key={tag.id}
-                            onClick={() => applyTag(selectedContact, tag.id)}
-                            className={`flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm transition-colors w-full text-left ${
-                              active ? 'bg-gray-100' : 'hover:bg-gray-50'
-                            }`}
-                          >
-                            <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: tag.color || '#00a884' }} />
-                            <span className="flex-1 text-[#111b21]">{tag.name}</span>
-                            {active && <X className="w-3 h-3 text-gray-400" />}
-                            {!active && <Plus className="w-3 h-3 text-gray-300" />}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                  <div className="border-t pt-2">
-                    <p className="text-xs font-semibold text-gray-500 mb-1.5">NOVA ETIQUETA</p>
-                    <div className="flex gap-1 mb-1.5">
-                      {TAG_COLORS.map(c => (
-                        <button key={c} onClick={() => setNewTagColor(c)}
-                          className={`w-5 h-5 rounded-full flex-shrink-0 transition-transform ${newTagColor === c ? 'ring-2 ring-offset-1 ring-gray-400 scale-110' : ''}`}
-                          style={{ backgroundColor: c }}
-                        />
+                <div className="flex items-center gap-1 ml-auto">
+                  <Popover open={showPipelinePopover} onOpenChange={setShowPipelinePopover}>
+                    <PopoverTrigger asChild>
+                      <Button size="sm" variant="ghost" className={`gap-1 text-xs h-7 px-2 ${pipelineAdded[selectedContact.phone] ? 'text-green-600' : 'text-[#54656f]'}`}>
+                        {pipelineAdded[selectedContact.phone] ? <Check className="w-3.5 h-3.5" /> : <GitBranch className="w-3.5 h-3.5" />}
+                        Pipeline
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-52 p-2" align="end">
+                      <p className="text-xs font-semibold text-gray-500 mb-2 px-1">ADICIONAR AO PIPELINE</p>
+                      {pipelineStages.map(stage => (
+                        <button
+                          key={stage.id}
+                          onClick={() => addToPipeline.mutate(stage.id)}
+                          disabled={addToPipeline.isPending}
+                          className="flex items-center gap-2 w-full px-2 py-1.5 rounded-lg hover:bg-gray-50 text-sm text-left transition-colors"
+                        >
+                          <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: stage.color || '#6b7280' }} />
+                          <span>{stage.label}</span>
+                          {pipelineAdded[selectedContact.phone] === stage.id && <Check className="w-3 h-3 text-green-500 ml-auto" />}
+                        </button>
                       ))}
-                    </div>
-                    <div className="flex gap-1">
-                      <input
-                        className="flex-1 text-xs border rounded-md px-2 py-1 outline-none focus:ring-1 focus:ring-[#00a884]"
-                        placeholder="Nome da etiqueta..."
-                        value={newTagName}
-                        onChange={e => setNewTagName(e.target.value)}
-                        onKeyDown={e => e.key === 'Enter' && handleCreateTag()}
-                      />
-                      <button
-                        onClick={handleCreateTag}
-                        disabled={!newTagName.trim() || creatingTag}
-                        className="px-2 py-1 rounded-md text-white text-xs font-medium disabled:opacity-40"
-                        style={{ backgroundColor: newTagColor }}
-                      >
-                        {creatingTag ? '...' : 'Criar'}
-                      </button>
-                    </div>
-                  </div>
-                  {selectedContact.tags?.length > 0 && (
-                    <div className="mt-2 pt-2 border-t flex flex-wrap gap-1">
-                      {selectedContact.tags.map(tagId => {
-                        const tag = tags.find(t => t.id === tagId);
-                        if (!tag) return null;
-                        return (
-                          <span key={tagId} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs text-white" style={{ backgroundColor: tag.color || '#00a884' }}>
-                            {tag.name}
-                            <button onClick={() => applyTag(selectedContact, tagId)}><X className="w-2.5 h-2.5" /></button>
-                          </span>
-                        );
-                      })}
-                    </div>
-                  )}
-                </PopoverContent>
-              </Popover>
-              <Button size="icon" variant="ghost" onClick={() => refetchMessages()}>
-                <RefreshCw className="w-4 h-4 text-[#54656f]" />
-              </Button>
+                    </PopoverContent>
+                  </Popover>
+
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button size="sm" variant="ghost" className="gap-1 text-[#54656f] text-xs h-7 px-2">
+                        <Tag className="w-3.5 h-3.5" />
+                        Etiquetas
+                        {selectedContact.tags?.length > 0 && (
+                          <span className="ml-0.5 bg-[#00a884] text-white rounded-full w-4 h-4 flex items-center justify-center text-[9px] font-bold">{selectedContact.tags.length}</span>
+                        )}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-64 p-3" align="end">
+                      <p className="text-xs font-semibold text-gray-500 mb-2">ETIQUETAS</p>
+                      {tags.length === 0 ? (
+                        <p className="text-xs text-gray-400 mb-2">Nenhuma etiqueta criada ainda.</p>
+                      ) : (
+                        <div className="flex flex-col gap-1 mb-2">
+                          {tags.map(tag => {
+                            const active = selectedContact.tags?.includes(tag.id);
+                            return (
+                              <button
+                                key={tag.id}
+                                onClick={() => applyTag(selectedContact, tag.id)}
+                                className={`flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm transition-colors w-full text-left ${
+                                  active ? 'bg-gray-100' : 'hover:bg-gray-50'
+                                }`}
+                              >
+                                <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: tag.color || '#00a884' }} />
+                                <span className="flex-1 text-[#111b21]">{tag.name}</span>
+                                {active && <X className="w-3 h-3 text-gray-400" />}
+                                {!active && <Plus className="w-3 h-3 text-gray-300" />}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                      <div className="border-t pt-2">
+                        <p className="text-xs font-semibold text-gray-500 mb-1.5">NOVA ETIQUETA</p>
+                        <div className="flex gap-1 mb-1.5">
+                          {TAG_COLORS.map(c => (
+                            <button key={c} onClick={() => setNewTagColor(c)}
+                              className={`w-5 h-5 rounded-full flex-shrink-0 transition-transform ${newTagColor === c ? 'ring-2 ring-offset-1 ring-gray-400 scale-110' : ''}`}
+                              style={{ backgroundColor: c }}
+                            />
+                          ))}
+                        </div>
+                        <div className="flex gap-1">
+                          <input
+                            className="flex-1 text-xs border rounded-md px-2 py-1 outline-none focus:ring-1 focus:ring-[#00a884]"
+                            placeholder="Nome da etiqueta..."
+                            value={newTagName}
+                            onChange={e => setNewTagName(e.target.value)}
+                            onKeyDown={e => e.key === 'Enter' && handleCreateTag()}
+                          />
+                          <button
+                            onClick={handleCreateTag}
+                            disabled={!newTagName.trim() || creatingTag}
+                            className="px-2 py-1 rounded-md text-white text-xs font-medium disabled:opacity-40"
+                            style={{ backgroundColor: newTagColor }}
+                          >
+                            {creatingTag ? '...' : 'Criar'}
+                          </button>
+                        </div>
+                      </div>
+                      {selectedContact.tags?.length > 0 && (
+                        <div className="mt-2 pt-2 border-t flex flex-wrap gap-1">
+                          {selectedContact.tags.map(tagId => {
+                            const tag = tags.find(t => t.id === tagId);
+                            if (!tag) return null;
+                            return (
+                              <span key={tagId} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs text-white" style={{ backgroundColor: tag.color || '#00a884' }}>
+                                {tag.name}
+                                <button onClick={() => applyTag(selectedContact, tagId)}><X className="w-2.5 h-2.5" /></button>
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </PopoverContent>
+                  </Popover>
+                </div>
+              </div>
             </div>
 
             {/* Mensagens */}
