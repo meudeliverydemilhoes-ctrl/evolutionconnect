@@ -20,6 +20,9 @@ export default function Chat() {
   const [sending, setSending] = useState(false);
   const [socketConnected, setSocketConnected] = useState(false);
   const [profilePics, setProfilePics] = useState({});
+  const [newTagName, setNewTagName] = useState("");
+  const [newTagColor, setNewTagColor] = useState("#00a884");
+  const [creatingTag, setCreatingTag] = useState(false);
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const selectedContactRef = useRef(selectedContact);
@@ -143,6 +146,17 @@ export default function Chat() {
     ativo: "bg-green-100 text-green-700",
     inativo: "bg-gray-100 text-gray-600",
     bloqueado: "bg-red-100 text-red-700",
+  };
+
+  const TAG_COLORS = ["#00a884","#ef4444","#f97316","#eab308","#22c55e","#3b82f6","#8b5cf6","#ec4899"];
+
+  const handleCreateTag = async () => {
+    if (!newTagName.trim()) return;
+    setCreatingTag(true);
+    await base44.entities.Tag.create({ name: newTagName.trim(), color: newTagColor });
+    queryClient.invalidateQueries({ queryKey: ["tags"] });
+    setNewTagName("");
+    setCreatingTag(false);
   };
 
   const applyTag = async (contact, tagId) => {
@@ -278,9 +292,9 @@ export default function Chat() {
                 <PopoverContent className="w-64 p-3" align="end">
                   <p className="text-xs font-semibold text-gray-500 mb-2">ETIQUETAS</p>
                   {tags.length === 0 ? (
-                    <p className="text-xs text-gray-400">Nenhuma etiqueta criada ainda.</p>
+                    <p className="text-xs text-gray-400 mb-2">Nenhuma etiqueta criada ainda.</p>
                   ) : (
-                    <div className="flex flex-col gap-1">
+                    <div className="flex flex-col gap-1 mb-2">
                       {tags.map(tag => {
                         const active = selectedContact.tags?.includes(tag.id);
                         return (
@@ -300,6 +314,34 @@ export default function Chat() {
                       })}
                     </div>
                   )}
+                  <div className="border-t pt-2">
+                    <p className="text-xs font-semibold text-gray-500 mb-1.5">NOVA ETIQUETA</p>
+                    <div className="flex gap-1 mb-1.5">
+                      {TAG_COLORS.map(c => (
+                        <button key={c} onClick={() => setNewTagColor(c)}
+                          className={`w-5 h-5 rounded-full flex-shrink-0 transition-transform ${newTagColor === c ? 'ring-2 ring-offset-1 ring-gray-400 scale-110' : ''}`}
+                          style={{ backgroundColor: c }}
+                        />
+                      ))}
+                    </div>
+                    <div className="flex gap-1">
+                      <input
+                        className="flex-1 text-xs border rounded-md px-2 py-1 outline-none focus:ring-1 focus:ring-[#00a884]"
+                        placeholder="Nome da etiqueta..."
+                        value={newTagName}
+                        onChange={e => setNewTagName(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && handleCreateTag()}
+                      />
+                      <button
+                        onClick={handleCreateTag}
+                        disabled={!newTagName.trim() || creatingTag}
+                        className="px-2 py-1 rounded-md text-white text-xs font-medium disabled:opacity-40"
+                        style={{ backgroundColor: newTagColor }}
+                      >
+                        {creatingTag ? '...' : 'Criar'}
+                      </button>
+                    </div>
+                  </div>
                   {selectedContact.tags?.length > 0 && (
                     <div className="mt-2 pt-2 border-t flex flex-wrap gap-1">
                       {selectedContact.tags.map(tagId => {
