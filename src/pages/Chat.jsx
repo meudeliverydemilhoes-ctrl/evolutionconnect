@@ -29,6 +29,54 @@ export default function Chat() {
   const [showSummary, setShowSummary] = useState(false);
   const [summary, setSummary] = useState("");
   const [summarizing, setSummarizing] = useState(false);
+  const [showAnalysis, setShowAnalysis] = useState(false);
+  const [analysis, setAnalysis] = useState(null);
+  const [analyzing, setAnalyzing] = useState(false);
+
+  const analyzeConversation = async () => {
+    if (!allMessages.length || analyzing) return;
+    setAnalyzing(true);
+    setShowAnalysis(true);
+    setAnalysis(null);
+    const history = allMessages.map((m, i) => {
+      const prev = allMessages[i - 1];
+      const diffMin = prev ? Math.round((new Date(m.timestamp || m.created_date) - new Date(prev.timestamp || prev.created_date)) / 60000) : 0;
+      return `[${m.direction === "sent" ? "SDR" : "Cliente"} ${diffMin > 0 ? `+${diffMin}min` : ""}]: ${m.text}`;
+    }).join("\n");
+    const result = await base44.integrations.Core.InvokeLLM({
+      prompt: `Você é um especialista em vendas e SDR (Sales Development Representative). Analise a seguinte conversa de WhatsApp entre um SDR e um cliente potencial.\n\nConversa:\n${history}\n\nGere uma análise detalhada em português no seguinte formato JSON:\n{
+  "nota_geral": (0-10),
+  "pontos_criticos": [lista de pontos críticos observados],
+  "pontos_positivos": [lista de pontos positivos],
+  "oportunidades_melhoria": [o que o SDR poderia ter feito melhor],
+  "tempo_resposta_medio": "tempo médio de resposta do SDR",
+  "total_mensagens_sdr": numero,
+  "total_mensagens_cliente": numero,
+  "engajamento_cliente": "baixo/médio/alto",
+  "etapa_funil": "etapa atual do cliente no funil",
+  "proximo_passo_recomendado": "acao recomendada",
+  "resumo_executivo": "resumo em 2 linhas"
+}`,
+      response_json_schema: {
+        type: "object",
+        properties: {
+          nota_geral: { type: "number" },
+          pontos_criticos: { type: "array", items: { type: "string" } },
+          pontos_positivos: { type: "array", items: { type: "string" } },
+          oportunidades_melhoria: { type: "array", items: { type: "string" } },
+          tempo_resposta_medio: { type: "string" },
+          total_mensagens_sdr: { type: "number" },
+          total_mensagens_cliente: { type: "number" },
+          engajamento_cliente: { type: "string" },
+          etapa_funil: { type: "string" },
+          proximo_passo_recomendado: { type: "string" },
+          resumo_executivo: { type: "string" },
+        }
+      }
+    });
+    setAnalysis(result);
+    setAnalyzing(false);
+  };
 
   const summarizeConversation = async () => {
     if (!allMessages.length || summarizing) return;
@@ -367,6 +415,10 @@ export default function Chat() {
                   </div>
                 )}
                 <div className="flex items-center gap-1 ml-auto">
+                  <Button size="sm" variant="ghost" className="gap-1 text-purple-600 text-xs h-7 px-2" onClick={analyzeConversation} disabled={analyzing || !allMessages.length}>
+                    {analyzing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                    Análise SDR
+                  </Button>
                   <Button size="sm" variant="ghost" className="gap-1 text-[#54656f] text-xs h-7 px-2" onClick={summarizeConversation} disabled={summarizing || !allMessages.length}>
                     {summarizing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
                     Resumir
@@ -508,6 +560,77 @@ export default function Chat() {
               ))}
               <div ref={messagesEndRef} />
             </div>
+
+            <Dialog open={showAnalysis} onOpenChange={setShowAnalysis}>
+              <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-purple-500" />
+                    Análise SDR
+                    {analysis && (
+                      <span className={`ml-auto text-sm font-bold px-2 py-0.5 rounded-full ${
+                        analysis.nota_geral >= 8 ? 'bg-green-100 text-green-700' :
+                        analysis.nota_geral >= 5 ? 'bg-yellow-100 text-yellow-700' :
+                        'bg-red-100 text-red-700'
+                      }`}>{analysis.nota_geral}/10</span>
+                    )}
+                  </DialogTitle>
+                </DialogHeader>
+                {analyzing ? (
+                  <div className="flex items-center gap-2 text-gray-400 py-8 justify-center">
+                    <Loader2 className="w-5 h-5 animate-spin" /> Analisando conversa...
+                  </div>
+                ) : analysis && (
+                  <div className="space-y-4 text-sm">
+                    <p className="text-gray-600 bg-gray-50 rounded-lg p-3 italic">{analysis.resumo_executivo}</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="bg-blue-50 rounded-lg p-3 text-center">
+                        <p className="text-xs text-blue-500 font-medium">Mensagens SDR</p>
+                        <p className="text-xl font-bold text-blue-700">{analysis.total_mensagens_sdr}</p>
+                      </div>
+                      <div className="bg-purple-50 rounded-lg p-3 text-center">
+                        <p className="text-xs text-purple-500 font-medium">Mensagens Cliente</p>
+                        <p className="text-xl font-bold text-purple-700">{analysis.total_mensagens_cliente}</p>
+                      </div>
+                      <div className="bg-green-50 rounded-lg p-3 text-center">
+                        <p className="text-xs text-green-500 font-medium">Tempo Resposta</p>
+                        <p className="text-sm font-bold text-green-700">{analysis.tempo_resposta_medio}</p>
+                      </div>
+                      <div className="bg-orange-50 rounded-lg p-3 text-center">
+                        <p className="text-xs text-orange-500 font-medium">Engajamento</p>
+                        <p className="text-sm font-bold text-orange-700 capitalize">{analysis.engajamento_cliente}</p>
+                      </div>
+                    </div>
+                    <div className="bg-gray-50 rounded-lg p-3">
+                      <p className="text-xs font-semibold text-gray-500 mb-1">ETAPA NO FUNIL</p>
+                      <p className="text-gray-700">{analysis.etapa_funil}</p>
+                    </div>
+                    {analysis.pontos_positivos?.length > 0 && (
+                      <div>
+                        <p className="text-xs font-semibold text-green-600 mb-1">✅ PONTOS POSITIVOS</p>
+                        <ul className="space-y-1">{analysis.pontos_positivos.map((p, i) => <li key={i} className="text-gray-700 bg-green-50 rounded px-2 py-1">{p}</li>)}</ul>
+                      </div>
+                    )}
+                    {analysis.pontos_criticos?.length > 0 && (
+                      <div>
+                        <p className="text-xs font-semibold text-red-600 mb-1">⚠️ PONTOS CRÍTICOS</p>
+                        <ul className="space-y-1">{analysis.pontos_criticos.map((p, i) => <li key={i} className="text-gray-700 bg-red-50 rounded px-2 py-1">{p}</li>)}</ul>
+                      </div>
+                    )}
+                    {analysis.oportunidades_melhoria?.length > 0 && (
+                      <div>
+                        <p className="text-xs font-semibold text-blue-600 mb-1">💡 O QUE MELHORAR</p>
+                        <ul className="space-y-1">{analysis.oportunidades_melhoria.map((p, i) => <li key={i} className="text-gray-700 bg-blue-50 rounded px-2 py-1">{p}</li>)}</ul>
+                      </div>
+                    )}
+                    <div className="bg-[#00a884]/10 rounded-lg p-3 border border-[#00a884]/20">
+                      <p className="text-xs font-semibold text-[#00a884] mb-1">🎯 PRÓXIMO PASSO</p>
+                      <p className="text-gray-700">{analysis.proximo_passo_recomendado}</p>
+                    </div>
+                  </div>
+                )}
+              </DialogContent>
+            </Dialog>
 
             <Dialog open={showSummary} onOpenChange={setShowSummary}>
               <DialogContent className="max-w-md">
