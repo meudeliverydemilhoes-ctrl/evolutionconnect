@@ -49,7 +49,8 @@ export default function Chat() {
       return msgs || [];
     },
     enabled: !!selectedContact,
-    refetchInterval: 5000,
+    refetchInterval: 2000,
+    staleTime: 0,
   });
 
   // Tempo real via subscriptions do Base44 (apenas para mensagens recebidas)
