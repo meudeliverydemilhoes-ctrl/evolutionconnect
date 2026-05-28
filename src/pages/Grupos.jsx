@@ -44,10 +44,7 @@ export default function Grupos() {
         <div className="bg-white rounded-xl p-10 text-center shadow-sm">
           <Users className="w-16 h-16 mx-auto mb-4 text-gray-300" />
           <h3 className="font-semibold text-gray-700 mb-2">Grupos WhatsApp</h3>
-          <p className="text-sm text-gray-500 mb-4">Clique em "Carregar Grupos" para buscar os grupos do WhatsApp conectado.</p>
-          <Button className="bg-[#00a884] hover:bg-[#02906f]" onClick={fetchGroups}>
-            <RefreshCw className="w-4 h-4 mr-2" /> Carregar Grupos
-          </Button>
+          <p className="text-sm text-gray-500 mb-4">Envie uma mensagem em um grupo para que ele apareça aqui.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
