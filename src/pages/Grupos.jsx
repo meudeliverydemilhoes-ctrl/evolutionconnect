@@ -11,12 +11,12 @@ export default function Grupos() {
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
 
-  // Busca todos os contatos (grupos ou contatos normais)
+  // Busca apenas os grupos (phone termina com @g.us)
   const { data: rawContacts = [], isLoading, error } = useQuery({
     queryKey: ["contacts"],
     queryFn: async () => {
       const allContacts = await base44.entities.Contact.list("-last_contact_date", 500);
-      return allContacts.filter(c => c.phone);
+      return allContacts.filter(c => c.phone && c.phone.endsWith("@g.us"));
     },
     refetchInterval: 2000,
     staleTime: 0,
