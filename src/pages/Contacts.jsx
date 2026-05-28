@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { MessageCircle, Plus, Search, Phone, Calendar } from "lucide-react";
+import { MessageCircle, Plus, Search, Phone, Calendar, Trash2, AlertTriangle } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import SendMessageModal from "@/components/whatsapp/SendMessageModal";
@@ -21,6 +21,8 @@ export default function Contacts() {
   const [showForm, setShowForm] = useState(false);
   const [messagingContact, setMessagingContact] = useState(null);
   const [form, setForm] = useState({ name: "", phone: "", email: "", status: "ativo", notes: "" });
+  const [showDupModal, setShowDupModal] = useState(false);
+  const [deduping, setDeduping] = useState(false);
 
   const { data: contacts = [], isLoading } = useQuery({
     queryKey: ["contacts"],
@@ -39,6 +41,38 @@ export default function Contacts() {
     },
   });
 
+  // Find duplicates grouped by phone
+  const duplicateGroups = Object.values(
+    contacts.reduce((acc, c) => {
+      const key = c.phone?.replace(/\D/g, '');
+      if (!key) return acc;
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(c);
+      return acc;
+    }, {})
+  ).filter(group => group.length > 1);
+
+  const totalDuplicates = duplicateGroups.reduce((s, g) => s + g.length - 1, 0);
+
+  const handleDeduplicate = async () => {
+    setDeduping(true);
+    for (const group of duplicateGroups) {
+      // Keep the one with most data (name, last_message, profile_pic)
+      const sorted = [...group].sort((a, b) => {
+        const scoreA = (a.name ? 2 : 0) + (a.last_message ? 1 : 0) + (a.profile_pic ? 1 : 0);
+        const scoreB = (b.name ? 2 : 0) + (b.last_message ? 1 : 0) + (b.profile_pic ? 1 : 0);
+        return scoreB - scoreA;
+      });
+      const [keep, ...toDelete] = sorted;
+      for (const dup of toDelete) {
+        await base44.entities.Contact.delete(dup.id);
+      }
+    }
+    queryClient.invalidateQueries({ queryKey: ["contacts"] });
+    setDeduping(false);
+    setShowDupModal(false);
+  };
+
   const filtered = contacts.filter(c =>
     c.name?.toLowerCase().includes(search.toLowerCase()) ||
     c.phone?.includes(search)
@@ -56,9 +90,17 @@ export default function Contacts() {
     <div className="p-6 max-w-5xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Contatos WhatsApp</h1>
-        <Button onClick={() => { setEditingContact(null); setForm({ name: "", phone: "", email: "", status: "ativo", notes: "" }); setShowForm(true); }}>
-          <Plus className="w-4 h-4 mr-2" /> Novo Contato
-        </Button>
+        <div className="flex gap-2">
+          {totalDuplicates > 0 && (
+            <Button variant="outline" onClick={() => setShowDupModal(true)} className="gap-2 text-orange-600 border-orange-300 hover:bg-orange-50">
+              <AlertTriangle className="w-4 h-4" />
+              {totalDuplicates} duplicado{totalDuplicates > 1 ? 's' : ''}
+            </Button>
+          )}
+          <Button onClick={() => { setEditingContact(null); setForm({ name: "", phone: "", email: "", status: "ativo", notes: "" }); setShowForm(true); }}>
+            <Plus className="w-4 h-4 mr-2" /> Novo Contato
+          </Button>
+        </div>
       </div>
 
       <div className="relative mb-4">
@@ -136,6 +178,42 @@ export default function Contacts() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Duplicates modal */}
+      {showDupModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center">
+                <AlertTriangle className="w-5 h-5 text-orange-500" />
+              </div>
+              <div>
+                <h3 className="font-bold text-lg">Contatos Duplicados</h3>
+                <p className="text-sm text-gray-500">{duplicateGroups.length} grupo{duplicateGroups.length > 1 ? 's' : ''} com duplicatas</p>
+              </div>
+            </div>
+            <div className="max-h-60 overflow-y-auto space-y-2 mb-4">
+              {duplicateGroups.map((group, i) => (
+                <div key={i} className="border rounded-lg p-3 bg-gray-50">
+                  <p className="text-xs font-semibold text-gray-500 mb-1">📞 {group[0].phone}</p>
+                  {group.map((c, j) => (
+                    <p key={c.id} className={`text-sm ${j === 0 ? 'text-green-700 font-medium' : 'text-red-500 line-through'}`}>
+                      {j === 0 ? '✓ ' : '✗ '}{c.name || 'Sem nome'}
+                    </p>
+                  ))}
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-gray-500 mb-4">O contato <span className="text-green-700 font-medium">verde</span> será mantido. Os <span className="text-red-500">riscados</span> serão removidos.</p>
+            <div className="flex gap-2">
+              <Button variant="outline" className="flex-1" onClick={() => setShowDupModal(false)} disabled={deduping}>Cancelar</Button>
+              <Button className="flex-1 bg-red-500 hover:bg-red-600" onClick={handleDeduplicate} disabled={deduping}>
+                {deduping ? 'Removendo...' : `Remover ${totalDuplicates} duplicado${totalDuplicates > 1 ? 's' : ''}`}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {messagingContact && (
         <SendMessageModal contact={messagingContact} onClose={() => setMessagingContact(null)} />
