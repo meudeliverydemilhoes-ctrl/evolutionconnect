@@ -1,0 +1,36 @@
+{
+  "name": "Flow",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Nome do fluxo"
+    },
+    "active": {
+      "type": "boolean",
+      "default": false
+    },
+    "trigger": {
+      "type": "string",
+      "description": "Gatilho do fluxo"
+    },
+    "steps": {
+      "type": "array",
+      "description": "Etapas do fluxo",
+      "items": {
+        "type": "object",
+        "properties": {
+          "delay_hours": {
+            "type": "number"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "required": [
+    "name"
+  ]
+}

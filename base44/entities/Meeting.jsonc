@@ -1,0 +1,45 @@
+{
+  "name": "Meeting",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "T\u00edtulo da reuni\u00e3o"
+    },
+    "contact_name": {
+      "type": "string"
+    },
+    "contact_phone": {
+      "type": "string"
+    },
+    "date": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "duration_minutes": {
+      "type": "number"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Anota\u00e7\u00f5es"
+    },
+    "ai_analysis": {
+      "type": "string",
+      "description": "An\u00e1lise IA"
+    },
+    "result": {
+      "type": "string",
+      "enum": [
+        "agendado",
+        "realizado",
+        "cancelado",
+        "no_show"
+      ],
+      "default": "agendado"
+    }
+  },
+  "required": [
+    "title",
+    "date"
+  ]
+}

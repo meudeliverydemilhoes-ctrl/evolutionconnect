@@ -1,0 +1,17 @@
+{
+  "name": "AlertConfig",
+  "type": "object",
+  "properties": {
+    "follow_up_hours": {
+      "type": "number",
+      "default": 24,
+      "description": "Horas para alertar follow-up"
+    },
+    "urgent_hours": {
+      "type": "number",
+      "default": 48,
+      "description": "Horas para alerta urgente"
+    }
+  },
+  "required": []
+}

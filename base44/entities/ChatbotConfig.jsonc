@@ -1,0 +1,33 @@
+{
+  "name": "ChatbotConfig",
+  "type": "object",
+  "properties": {
+    "active": {
+      "type": "boolean",
+      "default": false
+    },
+    "prompt": {
+      "type": "string",
+      "description": "Prompt/personalidade do bot"
+    },
+    "delay_seconds": {
+      "type": "number",
+      "default": 3
+    },
+    "filter": {
+      "type": "string",
+      "enum": [
+        "all",
+        "individual",
+        "groups",
+        "unread"
+      ],
+      "default": "individual"
+    },
+    "model": {
+      "type": "string",
+      "default": "claude-sonnet-4-5"
+    }
+  },
+  "required": []
+}

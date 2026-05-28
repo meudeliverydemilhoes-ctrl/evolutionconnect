@@ -1,0 +1,42 @@
+{
+  "name": "PipelineContact",
+  "type": "object",
+  "properties": {
+    "contact_phone": {
+      "type": "string",
+      "description": "Telefone do contato"
+    },
+    "contact_name": {
+      "type": "string",
+      "description": "Nome do contato"
+    },
+    "stage": {
+      "type": "string",
+      "enum": [
+        "novo",
+        "ativo",
+        "qualificado",
+        "negociando",
+        "fechado",
+        "perdido"
+      ],
+      "default": "novo",
+      "description": "Etapa do pipeline"
+    },
+    "deal_value": {
+      "type": "number",
+      "description": "Valor estimado do neg\u00f3cio"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Observa\u00e7\u00f5es"
+    },
+    "moved_manually": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "contact_phone"
+  ]
+}

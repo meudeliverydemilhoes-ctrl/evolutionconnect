@@ -5,12 +5,22 @@ import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
-// Add page imports here
+import AppLayout from "./components/AppLayout";
+import Chat from "./pages/Chat";
+import Dashboard from "./pages/Dashboard";
+import Pipeline from "./pages/Pipeline";
+import Grupos from "./pages/Grupos";
+import Chatbot from "./pages/Chatbot";
+import Alertas from "./pages/Alertas";
+import Scorecard from "./pages/Scorecard";
+import Relatorios from "./pages/Relatorios";
+import Central from "./pages/Central";
+import Reunioes from "./pages/Reunioes";
+import Fluxos from "./pages/Fluxos";
 import Contacts from "./pages/Contacts";
 import Orders from "./pages/Orders";
 import WhatsAppSetup from "./pages/WhatsAppSetup";
 import WhatsAppConnect from "./pages/WhatsAppConnect";
-import Chat from "./pages/Chat";
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -38,12 +48,23 @@ const AuthenticatedApp = () => {
   // Render the main app
   return (
     <Routes>
-      {/* Add your page Route elements here */}
-      <Route path="/" element={<Chat />} />
-      <Route path="/contacts" element={<Contacts />} />
-      <Route path="/orders" element={<Orders />} />
-      <Route path="/whatsapp-setup" element={<WhatsAppSetup />} />
-      <Route path="/whatsapp-connect" element={<WhatsAppConnect />} />
+      <Route element={<AppLayout />}>
+        <Route path="/" element={<Chat />} />
+        <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/pipeline" element={<Pipeline />} />
+        <Route path="/grupos" element={<Grupos />} />
+        <Route path="/chatbot" element={<Chatbot />} />
+        <Route path="/alertas" element={<Alertas />} />
+        <Route path="/scorecard" element={<Scorecard />} />
+        <Route path="/relatorios" element={<Relatorios />} />
+        <Route path="/central" element={<Central />} />
+        <Route path="/reunioes" element={<Reunioes />} />
+        <Route path="/fluxos" element={<Fluxos />} />
+        <Route path="/contacts" element={<Contacts />} />
+        <Route path="/orders" element={<Orders />} />
+        <Route path="/whatsapp-setup" element={<WhatsAppSetup />} />
+        <Route path="/whatsapp-connect" element={<WhatsAppConnect />} />
+      </Route>
       <Route path="*" element={<PageNotFound />} />
     </Routes>
   );
