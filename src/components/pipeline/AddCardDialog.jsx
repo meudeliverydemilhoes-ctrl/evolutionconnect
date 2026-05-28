@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 export default function AddCardDialog({ open, onOpenChange, stages, customFields, contacts, onSave, initialData }) {
   const [form, setForm] = useState({ contact_phone: "", contact_name: "", stage: "", deal_value: "" });
@@ -43,27 +44,28 @@ export default function AddCardDialog({ open, onOpenChange, stages, customFields
         <div className="flex-1 overflow-y-auto space-y-3 pr-1">
           <div>
             <label className="text-sm font-medium">Contato *</label>
-            <select
-              className="w-full mt-1 border rounded-md px-3 py-2 text-sm"
-              value={form.contact_phone}
-              onChange={e => {
-                const c = contacts.find(c => c.phone === e.target.value);
-                setForm(f => ({ ...f, contact_phone: e.target.value, contact_name: c?.name || "" }));
-              }}
-            >
-              <option value="">Selecionar contato...</option>
-              {contacts.map(c => <option key={c.id} value={c.phone}>{c.name || c.phone}</option>)}
-            </select>
+            <Select value={form.contact_phone} onValueChange={val => {
+              const c = contacts.find(c => c.phone === val);
+              setForm(f => ({ ...f, contact_phone: val, contact_name: c?.name || "" }));
+            }}>
+              <SelectTrigger className="mt-1">
+                <SelectValue placeholder="Selecionar contato..." />
+              </SelectTrigger>
+              <SelectContent>
+                {contacts.map(c => <SelectItem key={c.id} value={c.phone}>{c.name || c.phone}</SelectItem>)}
+              </SelectContent>
+            </Select>
           </div>
           <div>
             <label className="text-sm font-medium">Etapa</label>
-            <select
-              className="w-full mt-1 border rounded-md px-3 py-2 text-sm"
-              value={form.stage}
-              onChange={e => setForm(f => ({ ...f, stage: e.target.value }))}
-            >
-              {stages.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
-            </select>
+            <Select value={form.stage} onValueChange={val => setForm(f => ({ ...f, stage: val }))}>
+              <SelectTrigger className="mt-1">
+                <SelectValue placeholder="Selecionar etapa..." />
+              </SelectTrigger>
+              <SelectContent>
+                {stages.map(s => <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
           </div>
           <div>
             <label className="text-sm font-medium">Valor (R$)</label>

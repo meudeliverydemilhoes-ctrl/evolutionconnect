@@ -84,5 +84,12 @@
 
   body {
     @apply bg-background text-foreground;
+    overscroll-behavior: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  button, a, nav, [role="button"] {
+    user-select: none;
+    -webkit-user-select: none;
   }
 }

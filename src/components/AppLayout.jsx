@@ -1,4 +1,5 @@
 import { Link, useLocation, Outlet } from "react-router-dom";
+import { motion, AnimatePresence } from "framer-motion";
 import { useState } from "react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Menu, MessageCircle, LayoutDashboard, Kanban, Users, Bot, Bell, Trophy, BarChart2, Sparkles, Video, Zap, Settings, Tag } from "lucide-react";
@@ -58,7 +59,7 @@ export default function AppLayout() {
       </nav>
 
       {/* Top Bar - Mobile */}
-      <div className="md:hidden flex items-center justify-between bg-[#075e54] text-white px-4 py-3 flex-shrink-0 shadow-md">
+      <div className="md:hidden flex items-center justify-between bg-[#075e54] text-white px-4 py-3 flex-shrink-0 shadow-md" style={{ paddingTop: 'max(12px, env(safe-area-inset-top))' }}>
         <div className="flex items-center gap-2">
           <MessageCircle className="w-5 h-5" />
           <span className="font-bold text-base">MeuCRM</span>
@@ -102,11 +103,22 @@ export default function AppLayout() {
 
       {/* Page Content */}
       <div className="flex-1 overflow-hidden min-h-0">
-        <Outlet />
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={location.pathname}
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.15 }}
+            className="h-full"
+          >
+            <Outlet />
+          </motion.div>
+        </AnimatePresence>
       </div>
 
       {/* Bottom Navigation - Mobile */}
-      <nav className="md:hidden flex items-center bg-white border-t flex-shrink-0 shadow-[0_-2px_8px_rgba(0,0,0,0.08)]">
+      <nav className="md:hidden flex items-center bg-white border-t flex-shrink-0 shadow-[0_-2px_8px_rgba(0,0,0,0.08)]" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
         {bottomNavItems.map(({ to, icon: Icon, label }) => {
           const active = to === "/" ? location.pathname === "/" : location.pathname.startsWith(to);
           return (

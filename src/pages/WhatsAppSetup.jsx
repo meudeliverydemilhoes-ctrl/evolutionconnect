@@ -1,12 +1,34 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle, AlertCircle, Copy } from "lucide-react";
+import { CheckCircle, AlertCircle, Copy, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
 import { appParams } from "@/lib/app-params";
+import { useState } from "react";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { base44 } from "@/api/base44Client";
 
 export default function WhatsAppSetup() {
   const { toast } = useToast();
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDeleteAllData = async () => {
+    setDeleting(true);
+    const [contacts, messages, pipelineContacts] = await Promise.all([
+      base44.entities.Contact.list(),
+      base44.entities.Message.list(),
+      base44.entities.PipelineContact.list(),
+    ]);
+    await Promise.all([
+      ...contacts.map(c => base44.entities.Contact.delete(c.id)),
+      ...messages.map(m => base44.entities.Message.delete(m.id)),
+      ...pipelineContacts.map(p => base44.entities.PipelineContact.delete(p.id)),
+    ]);
+    setDeleting(false);
+    setShowDeleteDialog(false);
+    toast({ title: "Dados apagados", description: "Todos os contatos, mensagens e pipeline foram removidos." });
+  };
 
   // App ID correto vindo do SDK
   const appId = appParams.appId;
@@ -101,7 +123,42 @@ export default function WhatsAppSetup() {
             </div>
           </CardContent>
         </Card>
+        <Card className="border-red-200">
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center gap-2 text-red-600">
+              <Trash2 className="w-5 h-5" />
+              Zona de Perigo
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground mb-3">Apaga permanentemente todos os contatos, mensagens e entradas do pipeline. Esta ação não pode ser desfeita.</p>
+            <Button variant="destructive" onClick={() => setShowDeleteDialog(true)}>
+              <Trash2 className="w-4 h-4 mr-2" /> Apagar todos os dados
+            </Button>
+          </CardContent>
+        </Card>
       </div>
+
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Tem certeza?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta ação irá apagar permanentemente todos os contatos, mensagens e entradas do pipeline. Não há como desfazer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
+              onClick={handleDeleteAllData}
+              disabled={deleting}
+            >
+              {deleting ? "Apagando..." : "Sim, apagar tudo"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
