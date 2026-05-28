@@ -24,6 +24,11 @@ export default function Contacts() {
   const [showDupModal, setShowDupModal] = useState(false);
   const [deduping, setDeduping] = useState(false);
 
+  const { data: tags = [] } = useQuery({
+    queryKey: ["tags"],
+    queryFn: () => base44.entities.Tag.list(),
+  });
+
   const { data: contacts = [], isLoading } = useQuery({
     queryKey: ["contacts"],
     queryFn: () => base44.entities.Contact.list("-last_contact_date"),
@@ -127,6 +132,19 @@ export default function Contacts() {
                     </div>
                     {contact.last_message && (
                       <p className="text-xs text-muted-foreground mt-1 max-w-xs truncate">💬 {contact.last_message}</p>
+                    )}
+                    {contact.tags?.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-1.5">
+                        {contact.tags.map(tagId => {
+                          const tag = tags.find(t => t.id === tagId);
+                          if (!tag) return null;
+                          return (
+                            <span key={tagId} className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium text-white" style={{ backgroundColor: tag.color || '#00a884' }}>
+                              {tag.name}
+                            </span>
+                          );
+                        })}
+                      </div>
                     )}
                   </div>
                 </div>
