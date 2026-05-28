@@ -42,7 +42,6 @@ export default function Chat() {
         ? base44.entities.Message.filter({ contact_phone: selectedContact.phone }, "timestamp", 100)
         : [],
     enabled: !!selectedContact,
-    refetchInterval: 3000,
   });
 
   // Tempo real via subscriptions do Base44 (funciona sempre, sem CORS)
@@ -73,23 +72,27 @@ export default function Chat() {
   const sendMessage = async () => {
     if (!message.trim() || !selectedContact || sending) return;
     const text = message.trim();
+    const phone = selectedContact.phone;
+    const queryKey = ["messages", phone];
     setMessage("");
     setSending(true);
     try {
-      // Mostrar mensagem imediatamente na tela (otimista)
-      queryClient.setQueryData(["messages", selectedContact.phone], (old = []) => [
+      // Cancelar refetches em andamento e aplicar update otimista
+      await queryClient.cancelQueries({ queryKey });
+      queryClient.setQueryData(queryKey, (old = []) => [
         ...old,
-        { id: `temp-${Date.now()}`, contact_phone: selectedContact.phone, text, direction: "sent", timestamp: new Date().toISOString() }
+        { id: `temp-${Date.now()}`, contact_phone: phone, text, direction: "sent", timestamp: new Date().toISOString() }
       ]);
 
-      await base44.functions.invoke("sendWhatsAppMessage", {
-        phone: selectedContact.phone,
-        message: text,
-      });
-      setTimeout(() => refetchMessages(), 1500);
+      await base44.functions.invoke("sendWhatsAppMessage", { phone, message: text });
+
+      // Invalidar para buscar dados reais do servidor
+      queryClient.invalidateQueries({ queryKey });
       queryClient.invalidateQueries({ queryKey: ["contacts"] });
     } catch (e) {
       console.error(e);
+      // Em caso de erro, recarregar dados reais
+      queryClient.invalidateQueries({ queryKey });
     } finally {
       setSending(false);
     }
