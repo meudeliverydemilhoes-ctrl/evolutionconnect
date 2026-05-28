@@ -29,6 +29,7 @@ function extractMessage(data) {
 
   const fromMe = key.fromMe === true;
   const remoteJid = key.remoteJid || "";
+  const isGroup = remoteJid.includes("@g.us");
 
   // Suporte ao @lid: tentar todas as alternativas de JID disponíveis
   const rawJid =
@@ -56,7 +57,7 @@ function extractMessage(data) {
     data?.body ||
     "";
 
-  return { phone, pushName, text: text || null, timestamp: new Date().toISOString(), fromMe };
+  return { phone, pushName, text: text || null, timestamp: new Date().toISOString(), fromMe, isGroup };
 }
 
 export function useEvolutionSocket({ onNewMessage, onConnectionChange }) {
@@ -81,6 +82,7 @@ export function useEvolutionSocket({ onNewMessage, onConnectionChange }) {
       text: msg.text,
       timestamp: msg.timestamp,
       fromMe: msg.fromMe,
+      isGroup: msg.isGroup,
     })
       .then(() => onNewMessageRef.current?.(msg))
       .catch(err => {

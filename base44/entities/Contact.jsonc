@@ -48,6 +48,11 @@
     "notes": {
       "type": "string",
       "description": "Observa\u00e7\u00f5es sobre o contato"
+    },
+    "is_group": {
+      "type": "boolean",
+      "default": false,
+      "description": "Se \u00e9 um grupo do WhatsApp"
     }
   },
   "required": [

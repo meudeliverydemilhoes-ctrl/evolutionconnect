@@ -118,7 +118,7 @@ Deno.serve(async (req) => {
     const body = await req.json();
     console.log("processSocketMessage payload:", JSON.stringify(body));
 
-    const { phone, pushName, text, timestamp, fromMe } = body;
+    const { phone, pushName, text, timestamp, fromMe, isGroup } = body;
 
     if (!phone || !text) {
       return Response.json({ status: "ignored - missing phone or text" });
@@ -173,6 +173,7 @@ Deno.serve(async (req) => {
         last_message: text,
         last_contact_date: msgTime.toISOString(),
         name: contact.name || pushName,
+        is_group: isGroup || contact.is_group || false,
       });
     } else {
       contact = await base44.asServiceRole.entities.Contact.create({
@@ -181,6 +182,7 @@ Deno.serve(async (req) => {
         last_message: text,
         last_contact_date: msgTime.toISOString(),
         status: "ativo",
+        is_group: isGroup || false,
       });
     }
 
