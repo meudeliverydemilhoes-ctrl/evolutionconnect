@@ -21,6 +21,7 @@ import Contacts from "./pages/Contacts";
 import Orders from "./pages/Orders";
 import WhatsAppSetup from "./pages/WhatsAppSetup";
 import WhatsAppConnect from "./pages/WhatsAppConnect";
+import Issues from "./pages/Issues";
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -64,6 +65,7 @@ const AuthenticatedApp = () => {
         <Route path="/orders" element={<Orders />} />
         <Route path="/whatsapp-setup" element={<WhatsAppSetup />} />
         <Route path="/whatsapp-connect" element={<WhatsAppConnect />} />
+        <Route path="/issues" element={<Issues />} />
       </Route>
       <Route path="*" element={<PageNotFound />} />
     </Routes>
