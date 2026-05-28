@@ -17,7 +17,7 @@ const navItems = [
   { to: "/reunioes", icon: Video, label: "Reuniões" },
   { to: "/fluxos", icon: Zap, label: "Fluxos" },
   { to: "/tags", icon: Tag, label: "Etiquetas" },
-  { to: "/whatsapp-setup", icon: Settings, label: "Config" },
+  { to: "/whatsapp-setup", icon: Settings, label: "WhatsApp Setup" },
 ];
 
 const bottomNavItems = [
