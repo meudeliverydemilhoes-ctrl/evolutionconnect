@@ -72,23 +72,17 @@ export function useEvolutionSocket({ onNewMessage, onConnectionChange }) {
 
     console.log("[Socket] Nova mensagem de", msg.phone, "(fromMe:", msg.fromMe, "):", msg.text);
 
-
-
-    // Chamar função backend para salvar + IA (com deduplicação interna)
-    try {
-      await base44.functions.invoke("processSocketMessage", {
-        phone: msg.phone,
-        pushName: msg.pushName,
-        text: msg.text,
-        timestamp: msg.timestamp,
-        fromMe: msg.fromMe,
-      });
-    } catch (err) {
-      console.error("[Socket] Erro ao chamar processSocketMessage:", err);
-    }
-
-    // Notificar o Chat para rebuscar
+    // Notificar o Chat IMEDIATAMENTE para atualizar UI sem esperar a IA
     onNewMessageRef.current?.(msg);
+
+    // Chamar função backend para salvar + IA em background
+    base44.functions.invoke("processSocketMessage", {
+      phone: msg.phone,
+      pushName: msg.pushName,
+      text: msg.text,
+      timestamp: msg.timestamp,
+      fromMe: msg.fromMe,
+    }).catch(err => console.error("[Socket] Erro ao chamar processSocketMessage:", err));
   }, []);
 
   useEffect(() => {

@@ -47,14 +47,12 @@ export default function Chat() {
   // Tempo real via subscriptions do Base44 (apenas para mensagens recebidas)
   useEffect(() => {
     const unsubMsg = base44.entities.Message.subscribe((event) => {
-      if (event.data?.direction === "received") {
-        const phone = event.data?.contact_phone;
-        if (phone) {
-          if (selectedContactRef.current?.phone === phone) {
-            queryClient.invalidateQueries({ queryKey: ["messages", phone] });
-          }
-          queryClient.invalidateQueries({ queryKey: ["contacts"] });
+      const phone = event.data?.contact_phone;
+      if (phone) {
+        if (selectedContactRef.current?.phone === phone) {
+          queryClient.invalidateQueries({ queryKey: ["messages", phone] });
         }
+        queryClient.invalidateQueries({ queryKey: ["contacts"] });
       }
     });
     return unsubMsg;

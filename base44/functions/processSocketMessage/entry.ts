@@ -184,6 +184,15 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Verificar se o chatbot está ativo antes de processar IA
+    const chatbotConfigs = await base44.asServiceRole.entities.ChatbotConfig.list();
+    const chatbotActive = chatbotConfigs?.[0]?.active === true;
+
+    if (!chatbotActive) {
+      console.log("Chatbot inativo, mensagem salva sem resposta IA para", phone);
+      return Response.json({ status: "ok - chatbot off", contact_id: contact.id });
+    }
+
     // Buscar histórico para IA
     const messageHistory = await base44.asServiceRole.entities.Message.filter(
       { contact_phone: phone },
