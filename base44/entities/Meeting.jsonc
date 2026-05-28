@@ -12,6 +12,10 @@
     "contact_phone": {
       "type": "string"
     },
+    "contact_email": {
+      "type": "string",
+      "description": "E-mail do contato"
+    },
     "date": {
       "type": "string",
       "format": "date-time"
