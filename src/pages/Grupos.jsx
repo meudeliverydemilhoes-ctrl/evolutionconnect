@@ -2,30 +2,26 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Users, RefreshCw, MessageCircle } from "lucide-react";
 import { base44 } from "@/api/base44Client";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 export default function Grupos() {
-  const [loading, setLoading] = useState(false);
-  const [groups, setGroups] = useState([]);
-  const [error, setError] = useState(null);
+  const queryClient = useQueryClient();
 
-  const fetchGroups = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      // Busca todos os contatos via Chat
-      const chats = await base44.entities.Contact.list();
-      // Filtra apenas grupos (terminam em @g.us)
-      const groupChats = chats.filter(c => c.phone && c.phone.includes("@g.us"));
-      setGroups(groupChats);
-    } catch (e) {
-      setError("Não foi possível carregar os grupos. Verifique se o WhatsApp está conectado.");
-    }
-    setLoading(false);
-  };
+  const { data: rawContacts = [], isLoading, error } = useQuery({
+    queryKey: ["contacts"],
+    queryFn: () => base44.entities.Contact.list("-last_contact_date"),
+    refetchInterval: 2000,
+    staleTime: 0,
+  });
+
+  const groups = rawContacts.filter(c => c.phone && c.phone.includes("@g.us"));
 
   useEffect(() => {
-    fetchGroups();
-  }, []);
+    const unsubscribe = base44.entities.Contact.subscribe(() => {
+      queryClient.invalidateQueries({ queryKey: ["contacts"] });
+    });
+    return unsubscribe;
+  }, [queryClient]);
 
   return (
     <div className="h-full overflow-y-auto bg-[#f0f2f5] p-4 space-y-4">
@@ -34,17 +30,17 @@ export default function Grupos() {
           <Users className="w-6 h-6 text-[#00a884]" />
           <h1 className="text-xl font-bold text-[#111b21]">Grupos WhatsApp</h1>
         </div>
-        <Button size="sm" className="bg-[#00a884] hover:bg-[#02906f]" onClick={fetchGroups} disabled={loading}>
-          <RefreshCw className={`w-4 h-4 mr-1 ${loading ? "animate-spin" : ""}`} />
-          {loading ? "Carregando..." : "Carregar Grupos"}
+        <Button size="sm" className="bg-[#00a884] hover:bg-[#02906f]" disabled={isLoading} onClick={() => {}}>
+          <RefreshCw className={`w-4 h-4 mr-1 ${isLoading ? "animate-spin" : ""}`} />
+          {isLoading ? "Carregando..." : "Atualizado"}
         </Button>
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-red-600 text-sm">{error}</div>
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-red-600 text-sm">Erro ao carregar grupos</div>
       )}
 
-      {groups.length === 0 && !loading && !error ? (
+      {groups.length === 0 && !isLoading && !error ? (
         <div className="bg-white rounded-xl p-10 text-center shadow-sm">
           <Users className="w-16 h-16 mx-auto mb-4 text-gray-300" />
           <h3 className="font-semibold text-gray-700 mb-2">Grupos WhatsApp</h3>
