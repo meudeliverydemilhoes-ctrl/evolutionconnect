@@ -14,6 +14,7 @@ import { ptBR } from "date-fns/locale";
 export default function Chat() {
   const queryClient = useQueryClient();
   const [selectedContact, setSelectedContact] = useState(null);
+  const [showChat, setShowChat] = useState(false);
   const [search, setSearch] = useState("");
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
@@ -119,9 +120,9 @@ export default function Chat() {
   };
 
   return (
-    <div className="flex h-full min-h-0 bg-background">
+    <div className="flex h-full min-h-0 bg-background overflow-hidden">
       {/* Sidebar - Contatos */}
-      <div className="w-80 border-r flex flex-col bg-white min-h-0 min-w-0">
+      <div className={`${showChat ? 'hidden md:flex' : 'flex'} w-full md:w-80 border-r flex-col bg-white min-h-0 min-w-0`}>
         <div className="p-4 border-b bg-[#075e54]">
           <div className="flex items-center gap-2 mb-3">
             <MessageCircle className="w-5 h-5 text-white" />
@@ -162,7 +163,7 @@ export default function Chat() {
                 <div
                   key={contact.id}
                   className={`flex items-center gap-3 p-4 cursor-pointer hover:bg-gray-50 border-b transition-colors ${selectedContact?.id === contact.id ? "bg-[#f0f0f0]" : ""}`}
-                  onClick={() => setSelectedContact(contact)}
+                  onClick={() => { setSelectedContact(contact); setShowChat(true); }}
                 >
                   <div className="w-12 h-12 rounded-full bg-[#dfe5e7] flex items-center justify-center text-[#54656f] font-bold text-xl flex-shrink-0">
                     {(contact.name || contact.phone)?.[0]?.toUpperCase()}
@@ -185,11 +186,14 @@ export default function Chat() {
       </div>
 
       {/* Área do Chat */}
-      <div className="flex-1 flex flex-col min-h-0 min-w-0">
+      <div className={`${showChat ? 'flex' : 'hidden md:flex'} flex-1 flex-col min-h-0 min-w-0`}>
         {selectedContact ? (
           <>
             {/* Header */}
             <div className="p-3 bg-[#f0f2f5] border-b flex items-center gap-3">
+              <button className="md:hidden mr-1 text-[#54656f]" onClick={() => setShowChat(false)}>
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+              </button>
               <div className="w-10 h-10 rounded-full bg-[#dfe5e7] flex items-center justify-center text-[#54656f] font-bold text-lg">
                 {(selectedContact.name || selectedContact.phone)?.[0]?.toUpperCase()}
               </div>
