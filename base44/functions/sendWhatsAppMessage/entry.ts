@@ -21,6 +21,15 @@ Deno.serve(async (req) => {
       timestamp: new Date().toISOString(),
     });
 
+    // Atualizar contato com última mensagem enviada
+    const contacts = await base44.asServiceRole.entities.Contact.filter({ phone });
+    if (contacts && contacts.length > 0) {
+      await base44.asServiceRole.entities.Contact.update(contacts[0].id, {
+        last_message: message,
+        last_contact_date: new Date().toISOString(),
+      });
+    }
+
     const url = `${EVOLUTION_API_URL}/message/sendText/${EVOLUTION_INSTANCE}`;
     const res = await fetch(url, {
       method: "POST",
