@@ -361,8 +361,10 @@ export default function Chat() {
           ) : (
             contacts
               .filter(c =>
-                c.name?.toLowerCase().includes(search.toLowerCase()) ||
-                c.phone?.includes(search)
+                !c.phone?.includes("@g.us") && (
+                  c.name?.toLowerCase().includes(search.toLowerCase()) ||
+                  c.phone?.includes(search)
+                )
               )
               .map(contact => (
                 <div
