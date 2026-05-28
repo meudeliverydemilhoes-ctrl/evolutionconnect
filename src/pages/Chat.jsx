@@ -4,7 +4,8 @@ import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Send, Search, MessageCircle, Phone, RefreshCw, Wifi, WifiOff } from "lucide-react";
+import { Send, Search, MessageCircle, Phone, RefreshCw, Wifi, WifiOff, Tag, X, Plus } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Link } from "react-router-dom";
 import { useEvolutionSocket } from "@/hooks/useEvolutionSocket";
 import { format } from "date-fns";
@@ -30,6 +31,11 @@ export default function Chat() {
       queryClient.invalidateQueries({ queryKey: ["contacts"] });
     },
     onConnectionChange: setSocketConnected,
+  });
+
+  const { data: tags = [] } = useQuery({
+    queryKey: ["tags"],
+    queryFn: () => base44.entities.Tag.list(),
   });
 
   const { data: contacts = [], isLoading } = useQuery({
@@ -139,6 +145,18 @@ export default function Chat() {
     bloqueado: "bg-red-100 text-red-700",
   };
 
+  const applyTag = async (contact, tagId) => {
+    const currentTags = contact.tags || [];
+    const newTags = currentTags.includes(tagId)
+      ? currentTags.filter(t => t !== tagId)
+      : [...currentTags, tagId];
+    await base44.entities.Contact.update(contact.id, { tags: newTags });
+    queryClient.invalidateQueries({ queryKey: ["contacts"] });
+    if (selectedContact?.id === contact.id) {
+      setSelectedContact(prev => ({ ...prev, tags: newTags }));
+    }
+  };
+
   const ContactAvatar = ({ contact, size = "md" }) => {
     const pic = profilePics[contact.phone];
     const initial = (contact.name || contact.phone)?.[0]?.toUpperCase();
@@ -209,6 +227,19 @@ export default function Chat() {
                       )}
                     </div>
                     <p className="text-xs text-[#667781] truncate">{contact.last_message || contact.phone}</p>
+                    {contact.tags?.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {contact.tags.slice(0, 3).map(tagId => {
+                          const tag = tags.find(t => t.id === tagId);
+                          if (!tag) return null;
+                          return (
+                            <span key={tagId} className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium text-white" style={{ backgroundColor: tag.color || '#00a884' }}>
+                              {tag.name}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 </div>
               ))
@@ -234,6 +265,57 @@ export default function Chat() {
                   <Badge className={`text-xs ${statusColor[selectedContact.status]}`}>{selectedContact.status}</Badge>
                 </div>
               </div>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button size="sm" variant="ghost" className="gap-1 text-[#54656f] text-xs">
+                    <Tag className="w-3.5 h-3.5" />
+                    Etiquetas
+                    {selectedContact.tags?.length > 0 && (
+                      <span className="ml-0.5 bg-[#00a884] text-white rounded-full w-4 h-4 flex items-center justify-center text-[9px] font-bold">{selectedContact.tags.length}</span>
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-64 p-3" align="end">
+                  <p className="text-xs font-semibold text-gray-500 mb-2">ETIQUETAS</p>
+                  {tags.length === 0 ? (
+                    <p className="text-xs text-gray-400">Nenhuma etiqueta criada ainda.</p>
+                  ) : (
+                    <div className="flex flex-col gap-1">
+                      {tags.map(tag => {
+                        const active = selectedContact.tags?.includes(tag.id);
+                        return (
+                          <button
+                            key={tag.id}
+                            onClick={() => applyTag(selectedContact, tag.id)}
+                            className={`flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm transition-colors w-full text-left ${
+                              active ? 'bg-gray-100' : 'hover:bg-gray-50'
+                            }`}
+                          >
+                            <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: tag.color || '#00a884' }} />
+                            <span className="flex-1 text-[#111b21]">{tag.name}</span>
+                            {active && <X className="w-3 h-3 text-gray-400" />}
+                            {!active && <Plus className="w-3 h-3 text-gray-300" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {selectedContact.tags?.length > 0 && (
+                    <div className="mt-2 pt-2 border-t flex flex-wrap gap-1">
+                      {selectedContact.tags.map(tagId => {
+                        const tag = tags.find(t => t.id === tagId);
+                        if (!tag) return null;
+                        return (
+                          <span key={tagId} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs text-white" style={{ backgroundColor: tag.color || '#00a884' }}>
+                            {tag.name}
+                            <button onClick={() => applyTag(selectedContact, tagId)}><X className="w-2.5 h-2.5" /></button>
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
+                </PopoverContent>
+              </Popover>
               <Button size="icon" variant="ghost" onClick={() => refetchMessages()}>
                 <RefreshCw className="w-4 h-4 text-[#54656f]" />
               </Button>
