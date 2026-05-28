@@ -13,6 +13,14 @@ Deno.serve(async (req) => {
     const EVOLUTION_API_KEY = Deno.env.get("EVOLUTION_API_KEY");
     const EVOLUTION_INSTANCE = Deno.env.get("EVOLUTION_INSTANCE");
 
+    // Salvar mensagem ANTES de enviar para garantir histórico
+    await base44.asServiceRole.entities.Message.create({
+      contact_phone: phone,
+      text: message,
+      direction: "sent",
+      timestamp: new Date().toISOString(),
+    });
+
     const url = `${EVOLUTION_API_URL}/message/sendText/${EVOLUTION_INSTANCE}`;
     const res = await fetch(url, {
       method: "POST",
@@ -26,15 +34,7 @@ Deno.serve(async (req) => {
       }),
     });
 
-    const data = await res.json();
-
-    // Salvar mensagem enviada no histórico
-    await base44.asServiceRole.entities.Message.create({
-      contact_phone: phone,
-      text: message,
-      direction: "sent",
-      timestamp: new Date().toISOString(),
-    });
+    const data = await res.json().catch(() => ({}));
 
     return Response.json({ status: "ok", result: data });
   } catch (error) {
