@@ -104,15 +104,21 @@ Deno.serve(async (req) => {
 
     // Enviar para o usuário
     if (userEmail) {
-      await base44.integrations.Core.SendEmail({
-        to: userEmail,
-        subject: `Reunião agendada: ${meeting.title || meeting.contact_name || 'Novo agendamento'}`,
-        body: emailBody,
-      });
+      try {
+        await base44.integrations.Core.SendEmail({
+          to: userEmail,
+          subject: `Reunião agendada: ${meeting.title || meeting.contact_name || 'Novo agendamento'}`,
+          body: emailBody,
+        });
+        console.log('✅ E-mail enviado para usuário:', userEmail);
+      } catch (e) {
+        console.log('❌ Erro ao enviar e-mail para usuário:', e.message);
+      }
     }
 
     // Enviar para o cliente se tiver e-mail
     if (meeting.contact_email) {
+      console.log('Tentando enviar e-mail para:', meeting.contact_email);
       const clientEmailBody = `
         <h2>Confirmação de Reunião</h2>
         <p>Olá${meeting.contact_name ? ` ${meeting.contact_name}` : ''}!</p>
@@ -129,10 +135,12 @@ Deno.serve(async (req) => {
           subject: `Confirmação de Reunião: ${meeting.title || 'Novo Agendamento'}`,
           body: clientEmailBody,
         });
-        console.log('E-mail enviado para cliente:', meeting.contact_email);
+        console.log('✅ E-mail enviado com sucesso para:', meeting.contact_email);
       } catch (e) {
-        console.log('Erro ao enviar e-mail para cliente:', e.message);
+        console.log('❌ Erro ao enviar e-mail para cliente:', e.message);
       }
+    } else {
+      console.log('⚠️ Sem e-mail do contato para enviar confirmação');
     }
 
     // Enviar link via WhatsApp se tiver telefone
