@@ -212,7 +212,7 @@ Forneça: pontos principais, próximos passos sugeridos e probabilidade de fecha
               </select>
             </div>
             <div><label className="text-sm font-medium">Anotações</label><textarea className="w-full mt-1 border rounded-md px-3 py-2 text-sm h-20 resize-none" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} /></div>
-            <Button className="w-full bg-[#00a884] hover:bg-[#02906f]" onClick={() => save.mutate({ ...form, date: form.date ? new Date(form.date).toISOString() : null })}>
+            <Button className="w-full bg-[#00a884] hover:bg-[#02906f]" onClick={() => { if (!form.title || !form.date) { toast.error('Preencha título e data'); return; } save.mutate({ ...form, date: new Date(form.date).toISOString() }); }}>
               Salvar
             </Button>
           </div>
