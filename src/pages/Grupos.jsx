@@ -11,13 +11,12 @@ export default function Grupos() {
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
 
-  // Busca contatos em tempo real
+  // Busca todos os contatos e filtra grupos
   const { data: rawContacts = [], isLoading, error } = useQuery({
     queryKey: ["contacts"],
     queryFn: async () => {
-      const contacts = await base44.entities.Contact.list("-last_contact_date");
-      // Filtra apenas grupos (@g.us)
-      return contacts.filter(c => c.phone && c.phone.includes("@g.us"));
+      const allContacts = await base44.entities.Contact.list("-last_contact_date", 500);
+      return allContacts.filter(c => c.phone && c.phone.includes("@g.us"));
     },
     refetchInterval: 2000,
     staleTime: 0,
@@ -36,12 +35,9 @@ export default function Grupos() {
     queryKey: ["messages", selectedGroup?.phone],
     queryFn: async () => {
       if (!selectedGroup) return [];
-      const msgs = await base44.entities.Message.filter(
-        { contact_phone: selectedGroup.phone },
-        "-created_date",
-        50
-      );
-      return msgs ? msgs.reverse() : [];
+      const allMessages = await base44.entities.Message.list("-created_date", 200);
+      const filtered = allMessages.filter(m => m.contact_phone === selectedGroup.phone);
+      return filtered.reverse();
     },
     enabled: !!selectedGroup,
     refetchInterval: 2000,
