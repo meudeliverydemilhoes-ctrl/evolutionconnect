@@ -120,6 +120,8 @@ Deno.serve(async (req) => {
 
     let { phone, pushName, text, timestamp, fromMe, isGroup } = body;
 
+    console.log("[processSocketMessage] phone:", phone, "pushName:", pushName, "isGroup:", isGroup, "fromMe:", fromMe);
+
     if (!phone || !text) {
       return Response.json({ status: "ignored - missing phone or text" });
     }
