@@ -185,7 +185,7 @@ Deno.serve(async (req) => {
       const updateData = {
         last_message: text,
         last_contact_date: msgTime.toISOString(),
-        name: contact.name || pushName,
+        name: isGroup && pushName ? pushName : (contact.name || pushName),
       };
       // Se é grupo, marca como tal. Não desmarca se não é (pode ser contato individual que recebe de grupo)
       if (isGroup) {
