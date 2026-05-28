@@ -4,7 +4,8 @@ import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Send, Search, MessageCircle, Phone, RefreshCw, Wifi, WifiOff, Tag, X, Plus, GitBranch, Check } from "lucide-react";
+import { Send, Search, MessageCircle, Phone, RefreshCw, Wifi, WifiOff, Tag, X, Plus, GitBranch, Check, Sparkles, Loader2 } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Link } from "react-router-dom";
 import { useEvolutionSocket } from "@/hooks/useEvolutionSocket";
@@ -25,6 +26,24 @@ export default function Chat() {
   const [creatingTag, setCreatingTag] = useState(false);
   const [showPipelinePopover, setShowPipelinePopover] = useState(false);
   const [pipelineAdded, setPipelineAdded] = useState({});
+  const [showSummary, setShowSummary] = useState(false);
+  const [summary, setSummary] = useState("");
+  const [summarizing, setSummarizing] = useState(false);
+
+  const summarizeConversation = async () => {
+    if (!allMessages.length || summarizing) return;
+    setSummarizing(true);
+    setShowSummary(true);
+    setSummary("");
+    const history = allMessages.map(m =>
+      `${m.direction === "sent" ? "Atendente" : (selectedContact.name || selectedContact.phone)}: ${m.text}`
+    ).join("\n");
+    const result = await base44.integrations.Core.InvokeLLM({
+      prompt: `Resuma a seguinte conversa de WhatsApp de forma clara e objetiva em português. Destaque: assunto principal, pontos importantes mencionados, solicitações ou problemas do cliente, e próximos passos (se houver).\n\nConversa:\n${history}`,
+    });
+    setSummary(result);
+    setSummarizing(false);
+  };
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const selectedContactRef = useRef(selectedContact);
@@ -348,6 +367,10 @@ export default function Chat() {
                   </div>
                 )}
                 <div className="flex items-center gap-1 ml-auto">
+                  <Button size="sm" variant="ghost" className="gap-1 text-[#54656f] text-xs h-7 px-2" onClick={summarizeConversation} disabled={summarizing || !allMessages.length}>
+                    {summarizing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                    Resumir
+                  </Button>
                   <Popover open={showPipelinePopover} onOpenChange={setShowPipelinePopover}>
                     <PopoverTrigger asChild>
                       <Button size="sm" variant="ghost" className={`gap-1 text-xs h-7 px-2 ${pipelineAdded[selectedContact.phone] ? 'text-green-600' : 'text-[#54656f]'}`}>
@@ -485,6 +508,24 @@ export default function Chat() {
               ))}
               <div ref={messagesEndRef} />
             </div>
+
+            <Dialog open={showSummary} onOpenChange={setShowSummary}>
+              <DialogContent className="max-w-md">
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-purple-500" />
+                    Resumo da Conversa
+                  </DialogTitle>
+                </DialogHeader>
+                <div className="text-sm text-gray-700 whitespace-pre-wrap">
+                  {summarizing ? (
+                    <div className="flex items-center gap-2 text-gray-400 py-4 justify-center">
+                      <Loader2 className="w-5 h-5 animate-spin" /> Gerando resumo...
+                    </div>
+                  ) : summary}
+                </div>
+              </DialogContent>
+            </Dialog>
 
             {/* Input */}
             <div className="p-3 bg-[#f0f2f5] border-t flex items-center gap-2">
