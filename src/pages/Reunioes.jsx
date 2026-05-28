@@ -18,7 +18,7 @@ const RESULT_STYLES = {
 
 const RESULT_LABELS = { agendado: "Agendado", realizado: "Realizado", cancelado: "Cancelado", no_show: "No-show" };
 
-const emptyForm = { title: "", contact_name: "", contact_phone: "", date: "", duration_minutes: 60, notes: "", result: "agendado" };
+const emptyForm = { title: "", contact_name: "", contact_phone: "", contact_email: "", date: "", duration_minutes: 60, notes: "", result: "agendado" };
 
 export default function Reunioes() {
   const queryClient = useQueryClient();
@@ -58,7 +58,7 @@ export default function Reunioes() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["meetings"] }),
   });
 
-  const openEdit = (m) => { setEditing(m); setForm({ title: m.title, contact_name: m.contact_name || "", contact_phone: m.contact_phone || "", date: m.date?.slice(0, 16) || "", duration_minutes: m.duration_minutes || 60, notes: m.notes || "", result: m.result || "agendado" }); setShowForm(true); };
+  const openEdit = (m) => { setEditing(m); setForm({ title: m.title, contact_name: m.contact_name || "", contact_phone: m.contact_phone || "", contact_email: m.contact_email || "", date: m.date?.slice(0, 16) || "", duration_minutes: m.duration_minutes || 60, notes: m.notes || "", result: m.result || "agendado" }); setShowForm(true); };
 
   const generateAnalysis = async (meeting) => {
     setGeneratingAI(meeting.id);
@@ -166,6 +166,7 @@ Forneça: pontos principais, próximos passos sugeridos e probabilidade de fecha
               <div><label className="text-sm font-medium">Contato</label><Input className="mt-1" placeholder="Nome" value={form.contact_name} onChange={e => setForm(f => ({ ...f, contact_name: e.target.value }))} /></div>
               <div><label className="text-sm font-medium">Telefone</label><Input className="mt-1" placeholder="55119..." value={form.contact_phone} onChange={e => setForm(f => ({ ...f, contact_phone: e.target.value }))} /></div>
             </div>
+            <div><label className="text-sm font-medium">E-mail</label><Input type="email" className="mt-1" placeholder="cliente@email.com" value={form.contact_email} onChange={e => setForm(f => ({ ...f, contact_email: e.target.value }))} /></div>
             <div className="grid grid-cols-2 gap-2">
               <div><label className="text-sm font-medium">Data/Hora *</label><Input type="datetime-local" className="mt-1" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} /></div>
               <div><label className="text-sm font-medium">Duração (min)</label><Input type="number" className="mt-1" value={form.duration_minutes} onChange={e => setForm(f => ({ ...f, duration_minutes: Number(e.target.value) }))} /></div>
