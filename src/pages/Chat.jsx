@@ -42,9 +42,11 @@ export default function Chat() {
       if (!selectedContact) return [];
       const msgs = await base44.entities.Message.filter(
         { contact_phone: selectedContact.phone },
-        "created_date",
+        "-created_date",
         200
       );
+      // Reverter para ordem cronológica (mais antigas primeiro)
+      if (msgs) msgs.reverse();
       console.log("[Chat] mensagens carregadas para", selectedContact.phone, ":", msgs?.length, msgs);
       return msgs || [];
     },
