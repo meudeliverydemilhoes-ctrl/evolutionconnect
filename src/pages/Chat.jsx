@@ -10,7 +10,6 @@ import { useEvolutionSocket } from "@/hooks/useEvolutionSocket";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
-
 export default function Chat() {
   const queryClient = useQueryClient();
   const [selectedContact, setSelectedContact] = useState(null);
@@ -19,6 +18,7 @@ export default function Chat() {
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
   const [socketConnected, setSocketConnected] = useState(false);
+  const [profilePics, setProfilePics] = useState({});
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const selectedContactRef = useRef(selectedContact);
@@ -37,7 +37,7 @@ export default function Chat() {
     queryFn: () => base44.entities.Contact.list("-last_contact_date"),
   });
 
-  const { data: allMessages = [], refetch: refetchMessages, isError: msgError } = useQuery({
+  const { data: allMessages = [], refetch: refetchMessages } = useQuery({
     queryKey: ["messages", selectedContact?.phone],
     queryFn: async () => {
       if (!selectedContact) return [];
@@ -46,9 +46,7 @@ export default function Chat() {
         "-created_date",
         200
       );
-      // Reverter para ordem cronológica (mais antigas primeiro)
       if (msgs) msgs.reverse();
-      console.log("[Chat] mensagens carregadas para", selectedContact.phone, ":", msgs?.length, msgs);
       return msgs || [];
     },
     enabled: !!selectedContact,
@@ -56,7 +54,30 @@ export default function Chat() {
     staleTime: 0,
   });
 
-  // Tempo real via subscriptions do Base44 (apenas para mensagens recebidas)
+  const fetchProfilePic = async (contact) => {
+    if (!contact?.phone) return;
+    if (profilePics[contact.phone] !== undefined) return;
+    // Se já salvo na entidade, usa direto
+    if (contact.profile_pic) {
+      setProfilePics(prev => ({ ...prev, [contact.phone]: contact.profile_pic }));
+      return;
+    }
+    setProfilePics(prev => ({ ...prev, [contact.phone]: null }));
+    try {
+      const res = await base44.functions.invoke("getProfilePic", { phone: contact.phone });
+      const url = res?.data?.profilePicUrl || null;
+      if (url) setProfilePics(prev => ({ ...prev, [contact.phone]: url }));
+    } catch {}
+  };
+
+  // Pré-carrega fotos dos contatos visíveis
+  useEffect(() => {
+    if (contacts.length > 0) {
+      contacts.slice(0, 20).forEach(c => fetchProfilePic(c));
+    }
+  }, [contacts]);
+
+  // Tempo real via subscriptions do Base44
   useEffect(() => {
     const unsubMsg = base44.entities.Message.subscribe((event) => {
       const phone = event.data?.contact_phone;
@@ -95,7 +116,6 @@ export default function Chat() {
     setSending(true);
     try {
       await base44.functions.invoke("sendWhatsAppMessage", { phone, message: text });
-      // Forçar refetch imediato após salvar
       await queryClient.refetchQueries({ queryKey });
       queryClient.invalidateQueries({ queryKey: ["contacts"] });
     } catch (e) {
@@ -117,6 +137,19 @@ export default function Chat() {
     ativo: "bg-green-100 text-green-700",
     inativo: "bg-gray-100 text-gray-600",
     bloqueado: "bg-red-100 text-red-700",
+  };
+
+  const ContactAvatar = ({ contact, size = "md" }) => {
+    const pic = profilePics[contact.phone];
+    const initial = (contact.name || contact.phone)?.[0]?.toUpperCase();
+    const sizeClass = size === "md" ? "w-12 h-12 text-xl" : "w-10 h-10 text-lg";
+    return (
+      <div className={`${sizeClass} rounded-full bg-[#dfe5e7] flex items-center justify-center text-[#54656f] font-bold flex-shrink-0 overflow-hidden`}>
+        {pic ? (
+          <img src={pic} alt="" className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = "none"; }} />
+        ) : initial}
+      </div>
+    );
   };
 
   return (
@@ -163,11 +196,9 @@ export default function Chat() {
                 <div
                   key={contact.id}
                   className={`flex items-center gap-3 p-4 cursor-pointer hover:bg-gray-50 border-b transition-colors ${selectedContact?.id === contact.id ? "bg-[#f0f0f0]" : ""}`}
-                  onClick={() => { setSelectedContact(contact); setShowChat(true); }}
+                  onClick={() => { setSelectedContact(contact); setShowChat(true); fetchProfilePic(contact); }}
                 >
-                  <div className="w-12 h-12 rounded-full bg-[#dfe5e7] flex items-center justify-center text-[#54656f] font-bold text-xl flex-shrink-0">
-                    {(contact.name || contact.phone)?.[0]?.toUpperCase()}
-                  </div>
+                  <ContactAvatar contact={contact} size="md" />
                   <div className="flex-1 min-w-0 border-b pb-4">
                     <div className="flex items-center justify-between">
                       <p className="font-medium text-sm truncate">{contact.name || contact.phone}</p>
@@ -194,9 +225,7 @@ export default function Chat() {
               <button className="md:hidden mr-1 text-[#54656f]" onClick={() => setShowChat(false)}>
                 <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
               </button>
-              <div className="w-10 h-10 rounded-full bg-[#dfe5e7] flex items-center justify-center text-[#54656f] font-bold text-lg">
-                {(selectedContact.name || selectedContact.phone)?.[0]?.toUpperCase()}
-              </div>
+              <ContactAvatar contact={selectedContact} size="sm" />
               <div className="flex-1">
                 <p className="font-semibold text-[#111b21]">{selectedContact.name || selectedContact.phone}</p>
                 <div className="flex items-center gap-2">
