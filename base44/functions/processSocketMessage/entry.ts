@@ -118,10 +118,22 @@ Deno.serve(async (req) => {
     const body = await req.json();
     console.log("processSocketMessage payload:", JSON.stringify(body));
 
-    const { phone, pushName, text, timestamp, fromMe, isGroup } = body;
+    let { phone, pushName, text, timestamp, fromMe, isGroup } = body;
 
     if (!phone || !text) {
       return Response.json({ status: "ignored - missing phone or text" });
+    }
+
+    // Normalizar phone removendo @g.us, @s.whatsapp.net, etc
+    phone = phone.replace("@g.us", "").replace("@s.whatsapp.net", "").replace("@c.us", "").replace(/@[a-z.]+$/, "").replace(/\D/g, "");
+    
+    // Corrigir BR: se 55+DDD(2)+número(8) = 12 dígitos, adicionar o 9
+    if (phone.startsWith("55") && phone.length === 12) {
+      phone = phone.slice(0, 4) + "9" + phone.slice(4);
+    }
+
+    if (!phone) {
+      return Response.json({ status: "ignored - invalid phone" });
     }
 
     const direction = fromMe ? "sent" : "received";
@@ -169,12 +181,17 @@ Deno.serve(async (req) => {
     let contact;
     if (contacts && contacts.length > 0) {
       contact = contacts[0];
-      await base44.asServiceRole.entities.Contact.update(contact.id, {
+      // Sempre atualizar is_group se for true (mesmo que já tenha sido marcado)
+      const updateData = {
         last_message: text,
         last_contact_date: msgTime.toISOString(),
         name: contact.name || pushName,
-        is_group: isGroup || contact.is_group || false,
-      });
+      };
+      // Se é grupo, marca como tal. Não desmarca se não é (pode ser contato individual que recebe de grupo)
+      if (isGroup) {
+        updateData.is_group = true;
+      }
+      await base44.asServiceRole.entities.Contact.update(contact.id, updateData);
     } else {
       contact = await base44.asServiceRole.entities.Contact.create({
         phone,

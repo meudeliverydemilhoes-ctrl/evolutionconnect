@@ -207,6 +207,7 @@ Deno.serve(async (req) => {
           await base44.asServiceRole.entities.Contact.update(existing[0].id, {
             last_message: groupMessageText,
             last_contact_date: new Date().toISOString(),
+            is_group: true,
           });
         } else {
           await base44.asServiceRole.entities.Contact.create({
@@ -216,6 +217,7 @@ Deno.serve(async (req) => {
             last_contact_date: new Date().toISOString(),
             status: "ativo",
             tags: [],
+            is_group: true,
           });
         }
       }
