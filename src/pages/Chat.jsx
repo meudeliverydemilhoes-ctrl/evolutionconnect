@@ -113,7 +113,7 @@ export default function Chat() {
   };
 
   return (
-    <div className="flex h-screen bg-background">
+    <div className="flex h-full bg-background">
       {/* Sidebar - Contatos */}
       <div className="w-80 border-r flex flex-col bg-white">
         <div className="p-4 border-b bg-[#075e54]">
