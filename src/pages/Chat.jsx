@@ -88,8 +88,8 @@ export default function Chat() {
 
       await base44.functions.invoke("sendWhatsAppMessage", { phone, message: text });
 
-      // Invalidar para buscar dados reais do servidor
-      queryClient.invalidateQueries({ queryKey });
+      // Não invalidar mensagens aqui — o update otimista já mostra a mensagem
+      // A subscription e o refetchOnWindowFocus cuidam das atualizações
       queryClient.invalidateQueries({ queryKey: ["contacts"] });
     } catch (e) {
       console.error(e);
