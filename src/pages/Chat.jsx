@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Send, Search, MessageCircle, Phone, RefreshCw, Wifi, WifiOff, Tag, X, Plus } from "lucide-react";
+import { Send, Search, MessageCircle, Phone, RefreshCw, Wifi, WifiOff, Tag, X, Plus, GitBranch, Check } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Link } from "react-router-dom";
 import { useEvolutionSocket } from "@/hooks/useEvolutionSocket";
@@ -23,6 +23,8 @@ export default function Chat() {
   const [newTagName, setNewTagName] = useState("");
   const [newTagColor, setNewTagColor] = useState("#00a884");
   const [creatingTag, setCreatingTag] = useState(false);
+  const [showPipelinePopover, setShowPipelinePopover] = useState(false);
+  const [pipelineAdded, setPipelineAdded] = useState({});
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const selectedContactRef = useRef(selectedContact);
@@ -34,6 +36,41 @@ export default function Chat() {
       queryClient.invalidateQueries({ queryKey: ["contacts"] });
     },
     onConnectionChange: setSocketConnected,
+  });
+
+  const { data: pipelineConfig } = useQuery({
+    queryKey: ["pipelineConfig"],
+    queryFn: () => base44.entities.PipelineConfig.list(),
+    select: (data) => data[0],
+  });
+
+  const pipelineStages = pipelineConfig?.stages?.length
+    ? pipelineConfig.stages
+    : [
+        { id: "novo", label: "Novo", color: "#6b7280" },
+        { id: "ativo", label: "Ativo", color: "#3b82f6" },
+        { id: "qualificado", label: "Qualificado", color: "#8b5cf6" },
+        { id: "negociando", label: "Negociando", color: "#f59e0b" },
+        { id: "fechado", label: "Fechado", color: "#22c55e" },
+      ];
+
+  const addToPipeline = useMutation({
+    mutationFn: async (stage) => {
+      const existing = await base44.entities.PipelineContact.filter({ contact_phone: selectedContact.phone });
+      if (existing?.length > 0) {
+        await base44.entities.PipelineContact.update(existing[0].id, { stage });
+      } else {
+        await base44.entities.PipelineContact.create({
+          contact_phone: selectedContact.phone,
+          contact_name: selectedContact.name || selectedContact.phone,
+          stage,
+        });
+      }
+    },
+    onSuccess: (_, stage) => {
+      setPipelineAdded(prev => ({ ...prev, [selectedContact.phone]: stage }));
+      setShowPipelinePopover(false);
+    },
   });
 
   const { data: tags = [] } = useQuery({
@@ -302,6 +339,30 @@ export default function Chat() {
                   </div>
                 )}
               </div>
+              <Popover open={showPipelinePopover} onOpenChange={setShowPipelinePopover}>
+                <PopoverTrigger asChild>
+                  <Button size="sm" variant="ghost" className={`gap-1 text-xs ${pipelineAdded[selectedContact.phone] ? 'text-green-600' : 'text-[#54656f]'}`}>
+                    {pipelineAdded[selectedContact.phone] ? <Check className="w-3.5 h-3.5" /> : <GitBranch className="w-3.5 h-3.5" />}
+                    Pipeline
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-52 p-2" align="end">
+                  <p className="text-xs font-semibold text-gray-500 mb-2 px-1">ADICIONAR AO PIPELINE</p>
+                  {pipelineStages.map(stage => (
+                    <button
+                      key={stage.id}
+                      onClick={() => addToPipeline.mutate(stage.id)}
+                      disabled={addToPipeline.isPending}
+                      className="flex items-center gap-2 w-full px-2 py-1.5 rounded-lg hover:bg-gray-50 text-sm text-left transition-colors"
+                    >
+                      <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: stage.color || '#6b7280' }} />
+                      <span>{stage.label}</span>
+                      {pipelineAdded[selectedContact.phone] === stage.id && <Check className="w-3 h-3 text-green-500 ml-auto" />}
+                    </button>
+                  ))}
+                </PopoverContent>
+              </Popover>
+
               <Popover>
                 <PopoverTrigger asChild>
                   <Button size="sm" variant="ghost" className="gap-1 text-[#54656f] text-xs">
