@@ -209,6 +209,14 @@ export default function Chat() {
     }, {})
   );
 
+  const extractAudio = (msg) => {
+    if (!msg) return null;
+    // Tenta extrair áudio de diferentes fontes
+    if (msg.audioMessage?.url) return msg.audioMessage.url;
+    if (msg.pttMessage?.url) return msg.pttMessage.url; // Áudio PTT (Push-to-Talk)
+    return null;
+  };
+
   const { data: allMessages = [], refetch: refetchMessages } = useQuery({
     queryKey: ["messages", selectedContact?.phone],
     queryFn: async () => {
@@ -598,21 +606,33 @@ export default function Chat() {
                   <p className="text-xs mt-1">Envie uma mensagem para começar.</p>
                 </div>
               )}
-              {allMessages.map((msg, i) => (
-                <div key={msg.id || i} className={`flex ${msg.direction === "sent" ? "justify-end" : "justify-start"}`}>
-                  <div className={`max-w-xs lg:max-w-md px-3 py-2 rounded-lg text-sm shadow-sm relative ${
-                    msg.direction === "sent"
-                      ? "bg-[#d9fdd3] text-[#111b21] rounded-tr-none"
-                      : "bg-white text-[#111b21] rounded-tl-none"
-                  }`}>
-                    <p className="whitespace-pre-wrap">{msg.text}</p>
-                    <p className="text-[10px] text-[#667781] mt-1 text-right">
-                      {msg.timestamp ? format(new Date(msg.timestamp), "HH:mm") : ""}
-                      {msg.direction === "sent" && <span className="ml-1 text-[#53bdeb]">✓✓</span>}
-                    </p>
+              {allMessages.map((msg, i) => {
+                const audioUrl = extractAudio(msg.message);
+                return (
+                  <div key={msg.id || i} className={`flex ${msg.direction === "sent" ? "justify-end" : "justify-start"}`}>
+                    <div className={`max-w-xs lg:max-w-md px-3 py-2 rounded-lg text-sm shadow-sm relative ${
+                      msg.direction === "sent"
+                        ? "bg-[#d9fdd3] text-[#111b21] rounded-tr-none"
+                        : "bg-white text-[#111b21] rounded-tl-none"
+                    }`}>
+                      {audioUrl && (
+                        <div className="mb-2">
+                          <audio controls className="w-full max-w-xs rounded" style={{height: '32px'}}>
+                            <source src={audioUrl} type="audio/ogg" />
+                            Seu navegador não suporta áudio.
+                          </audio>
+                        </div>
+                      )}
+                      {msg.text && <p className="whitespace-pre-wrap">{msg.text}</p>}
+                      {!msg.text && !audioUrl && <p className="italic text-gray-500">[áudio]</p>}
+                      <p className="text-[10px] text-[#667781] mt-1 text-right">
+                        {msg.timestamp ? format(new Date(msg.timestamp), "HH:mm") : ""}
+                        {msg.direction === "sent" && <span className="ml-1 text-[#53bdeb]">✓✓</span>}
+                      </p>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
               <div ref={messagesEndRef} />
             </div>
 
