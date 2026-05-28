@@ -53,8 +53,8 @@ export default function Reunioes() {
       setShowForm(false);
       setEditing(null);
       setForm(emptyForm);
-      // Se nova reunião agendada com telefone, criar evento e enviar link via WhatsApp
-      if (!editing && variables.result === "agendado" && variables.contact_phone) {
+      // Se reunião agendada com telefone, criar evento e enviar link via WhatsApp
+      if (variables.result === "agendado" && variables.contact_phone && variables.contact_email) {
         try {
           const res = await base44.functions.invoke("createCalendarEvent", variables);
           if (res.data?.meetLink) {
