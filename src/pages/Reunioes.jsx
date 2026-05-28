@@ -34,7 +34,23 @@ export default function Reunioes() {
 
   const save = useMutation({
     mutationFn: (data) => editing ? base44.entities.Meeting.update(editing.id, data) : base44.entities.Meeting.create(data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["meetings"] }); setShowForm(false); setEditing(null); setForm(emptyForm); },
+    onSuccess: async (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["meetings"] });
+      setShowForm(false);
+      setEditing(null);
+      setForm(emptyForm);
+      // Se nova reunião agendada com telefone, criar evento e enviar link via WhatsApp
+      if (!editing && variables.result === "agendado" && variables.contact_phone) {
+        try {
+          const res = await base44.functions.invoke("createCalendarEvent", variables);
+          if (res.data?.meetLink) {
+            toast.success(`✅ Link do Meet enviado via WhatsApp para ${variables.contact_phone}`);
+          }
+        } catch (e) {
+          toast.error("Reunião salva, mas não foi possível criar o evento no Google Calendar.");
+        }
+      }
+    },
   });
 
   const remove = useMutation({
