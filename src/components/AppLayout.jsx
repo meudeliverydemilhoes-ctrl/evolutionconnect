@@ -1,7 +1,7 @@
 import { Link, useLocation, Outlet } from "react-router-dom";
 import { useState } from "react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { Menu, MessageCircle, LayoutDashboard, Kanban, Users, Bot, Bell, Trophy, BarChart2, Sparkles, Video, Zap, Settings } from "lucide-react";
+import { Menu, MessageCircle, LayoutDashboard, Kanban, Users, Bot, Bell, Trophy, BarChart2, Sparkles, Video, Zap, Settings, Tag } from "lucide-react";
 
 const navItems = [
   { to: "/", icon: MessageCircle, label: "Conversas" },
@@ -15,6 +15,7 @@ const navItems = [
   { to: "/central", icon: Sparkles, label: "Central IA" },
   { to: "/reunioes", icon: Video, label: "Reuniões" },
   { to: "/fluxos", icon: Zap, label: "Fluxos" },
+  { to: "/tags", icon: Tag, label: "Etiquetas" },
   { to: "/whatsapp-setup", icon: Settings, label: "Config" },
 ];
 

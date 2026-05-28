@@ -1,0 +1,43 @@
+{
+  "name": "Tag",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Nome da etiqueta"
+    },
+    "color": {
+      "type": "string",
+      "description": "Cor hex da etiqueta",
+      "default": "#00a884"
+    },
+    "pipeline_stage": {
+      "type": "string",
+      "enum": [
+        "novo",
+        "ativo",
+        "qualificado",
+        "negociando",
+        "fechado",
+        "perdido"
+      ],
+      "description": "Etapa do pipeline para mover o contato automaticamente"
+    },
+    "auto_apply": {
+      "type": "boolean",
+      "default": false,
+      "description": "Aplicar automaticamente em novos contatos"
+    },
+    "trigger_keyword": {
+      "type": "string",
+      "description": "Palavra-chave na mensagem para aplicar automaticamente (opcional)"
+    },
+    "flow_id": {
+      "type": "string",
+      "description": "ID do fluxo a iniciar automaticamente quando a etiqueta for aplicada"
+    }
+  },
+  "required": [
+    "name"
+  ]
+}

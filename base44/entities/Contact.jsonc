@@ -18,6 +18,14 @@
       "type": "string",
       "description": "URL da foto de perfil do WhatsApp"
     },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "IDs das etiquetas aplicadas ao contato",
+      "default": []
+    },
     "last_message": {
       "type": "string",
       "description": "\u00daltima mensagem recebida"

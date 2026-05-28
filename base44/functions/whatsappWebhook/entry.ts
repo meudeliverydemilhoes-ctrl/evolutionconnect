@@ -261,8 +261,37 @@ Deno.serve(async (req) => {
         last_message: messageText,
         last_contact_date: new Date().toISOString(),
         status: "ativo",
+        tags: [],
       });
       console.log("Novo contato criado:", contact.id);
+
+      // Auto-tagging: busca tags com auto_apply=true ou trigger_keyword
+      const allTags = await base44.asServiceRole.entities.Tag.list();
+      const autoTags = allTags.filter(t =>
+        t.auto_apply ||
+        (t.trigger_keyword && messageText.toLowerCase().includes(t.trigger_keyword.toLowerCase()))
+      );
+
+      if (autoTags.length > 0) {
+        const tagIds = autoTags.map(t => t.id);
+        await base44.asServiceRole.entities.Contact.update(contact.id, { tags: tagIds });
+        contact.tags = tagIds;
+
+        // Move para pipeline conforme a primeira tag com pipeline_stage
+        const tagWithStage = autoTags.find(t => t.pipeline_stage);
+        if (tagWithStage) {
+          const existing = await base44.asServiceRole.entities.PipelineContact.filter({ contact_phone: phone });
+          if (!existing || existing.length === 0) {
+            await base44.asServiceRole.entities.PipelineContact.create({
+              contact_phone: phone,
+              contact_name: pushName,
+              stage: tagWithStage.pipeline_stage,
+            });
+            console.log(`Contato ${phone} movido para pipeline: ${tagWithStage.pipeline_stage}`);
+          }
+        }
+        console.log(`Auto-tags aplicadas a ${phone}:`, tagIds);
+      }
     }
 
     // Buscar histórico recente de mensagens para contexto
