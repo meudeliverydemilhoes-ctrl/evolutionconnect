@@ -78,21 +78,12 @@ export default function Chat() {
     setMessage("");
     setSending(true);
     try {
-      // Cancelar refetches em andamento e aplicar update otimista
-      await queryClient.cancelQueries({ queryKey });
-      queryClient.setQueryData(queryKey, (old = []) => [
-        ...old,
-        { id: `temp-${Date.now()}`, contact_phone: phone, text, direction: "sent", timestamp: new Date().toISOString() }
-      ]);
-
       await base44.functions.invoke("sendWhatsAppMessage", { phone, message: text });
-
-      // Re-buscar mensagens reais após envio (remove temp e mostra a salva no DB)
-      queryClient.invalidateQueries({ queryKey });
+      // Forçar refetch imediato após salvar
+      await queryClient.refetchQueries({ queryKey });
       queryClient.invalidateQueries({ queryKey: ["contacts"] });
     } catch (e) {
-      console.error(e);
-      // Em caso de erro, recarregar dados reais
+      console.error("Erro ao enviar:", e);
       queryClient.invalidateQueries({ queryKey });
     } finally {
       setSending(false);
