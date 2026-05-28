@@ -3,14 +3,27 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-export default function AddCardDialog({ open, onOpenChange, stages, customFields, contacts, onSave }) {
+export default function AddCardDialog({ open, onOpenChange, stages, customFields, contacts, onSave, initialData }) {
   const [form, setForm] = useState({ contact_phone: "", contact_name: "", stage: "", deal_value: "" });
   const [customData, setCustomData] = useState({});
 
+  const isEditing = !!initialData;
+
   const handleOpen = (val) => {
     if (val) {
-      setForm({ contact_phone: "", contact_name: "", stage: stages[0]?.id || "novo", deal_value: "" });
-      setCustomData({});
+      if (initialData) {
+        setForm({
+          contact_phone: initialData.contact_phone || "",
+          contact_name: initialData.contact_name || "",
+          stage: initialData.stage || stages[0]?.id || "novo",
+          deal_value: initialData.deal_value || "",
+          notes: initialData.notes || "",
+        });
+        setCustomData(initialData.custom_data || {});
+      } else {
+        setForm({ contact_phone: "", contact_name: "", stage: stages[0]?.id || "novo", deal_value: "", notes: "" });
+        setCustomData({});
+      }
     }
     onOpenChange(val);
   };
@@ -25,7 +38,7 @@ export default function AddCardDialog({ open, onOpenChange, stages, customFields
     <Dialog open={open} onOpenChange={handleOpen}>
       <DialogContent className="max-w-md max-h-[80vh] flex flex-col">
         <DialogHeader>
-          <DialogTitle>Adicionar ao Pipeline</DialogTitle>
+          <DialogTitle>{isEditing ? "Editar Card" : "Adicionar ao Pipeline"}</DialogTitle>
         </DialogHeader>
         <div className="flex-1 overflow-y-auto space-y-3 pr-1">
           <div>
@@ -96,7 +109,7 @@ export default function AddCardDialog({ open, onOpenChange, stages, customFields
             disabled={!form.contact_phone}
             onClick={handleSubmit}
           >
-            Adicionar
+            {isEditing ? "Salvar" : "Adicionar"}
           </Button>
         </div>
       </DialogContent>

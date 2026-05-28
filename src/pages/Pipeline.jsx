@@ -3,7 +3,7 @@ import { base44 } from "@/api/base44Client";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Plus, RefreshCw, Phone, Settings } from "lucide-react";
+import { Plus, RefreshCw, Phone, Settings, Pencil } from "lucide-react";
 import PipelineSettingsDialog from "@/components/pipeline/PipelineSettingsDialog";
 import AddCardDialog from "@/components/pipeline/AddCardDialog";
 
@@ -20,6 +20,7 @@ export default function Pipeline() {
   const queryClient = useQueryClient();
   const [showAdd, setShowAdd] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [editingCard, setEditingCard] = useState(null);
 
   const { data: pipeline = [] } = useQuery({ queryKey: ["pipeline"], queryFn: () => base44.entities.PipelineContact.list() });
   const { data: contacts = [] } = useQuery({ queryKey: ["contacts"], queryFn: () => base44.entities.Contact.list() });
@@ -38,6 +39,11 @@ export default function Pipeline() {
 
   const updateStage = useMutation({
     mutationFn: ({ id, stage }) => base44.entities.PipelineContact.update(id, { stage, moved_manually: true }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["pipeline"] }),
+  });
+
+  const updateEntry = useMutation({
+    mutationFn: ({ id, data }) => base44.entities.PipelineContact.update(id, data),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["pipeline"] }),
   });
 
@@ -100,7 +106,14 @@ export default function Pipeline() {
                                 {...p.draggableProps}
                                 {...p.dragHandleProps}
                                 className="bg-white rounded-lg p-3 shadow-sm select-none cursor-grab active:cursor-grabbing"
-                              >
+                                >
+                                 <button
+                                   className="float-right ml-2 p-0.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600"
+                                   onClick={(e) => { e.stopPropagation(); setEditingCard(card); }}
+                                   onMouseDown={(e) => e.stopPropagation()}
+                                 >
+                                   <Pencil className="w-3 h-3" />
+                                 </button>
                                 <p className="font-medium text-sm text-[#111b21]">{card.contact_name || card.contact_phone}</p>
                                 <div className="flex items-center gap-1 mt-1">
                                   <Phone className="w-3 h-3 text-gray-400" />
@@ -150,6 +163,15 @@ export default function Pipeline() {
         customFields={customFields}
         contacts={contacts}
         onSave={(data) => createEntry.mutate(data)}
+      />
+      <AddCardDialog
+        open={!!editingCard}
+        onOpenChange={(v) => !v && setEditingCard(null)}
+        stages={stages}
+        customFields={customFields}
+        contacts={contacts}
+        initialData={editingCard}
+        onSave={(data) => { updateEntry.mutate({ id: editingCard.id, data }); setEditingCard(null); }}
       />
     </div>
   );
