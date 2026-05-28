@@ -86,7 +86,7 @@ export default function Chat() {
         phone: selectedContact.phone,
         message: text,
       });
-      refetchMessages();
+      setTimeout(() => refetchMessages(), 1500);
       queryClient.invalidateQueries({ queryKey: ["contacts"] });
     } catch (e) {
       console.error(e);
