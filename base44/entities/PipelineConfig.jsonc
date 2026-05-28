@@ -1,0 +1,46 @@
+{
+  "name": "PipelineConfig",
+  "type": "object",
+  "properties": {
+    "stages": {
+      "type": "array",
+      "description": "Etapas do pipeline",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "color": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "custom_fields": {
+      "type": "array",
+      "description": "Campos/perguntas customizados para os cards",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "required": {
+            "type": "boolean"
+          }
+        }
+      }
+    }
+  },
+  "required": []
+}

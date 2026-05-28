@@ -12,14 +12,6 @@
     },
     "stage": {
       "type": "string",
-      "enum": [
-        "novo",
-        "ativo",
-        "qualificado",
-        "negociando",
-        "fechado",
-        "perdido"
-      ],
       "default": "novo",
       "description": "Etapa do pipeline"
     },
@@ -30,6 +22,10 @@
     "notes": {
       "type": "string",
       "description": "Observa\u00e7\u00f5es"
+    },
+    "custom_data": {
+      "type": "object",
+      "description": "Dados dos campos customizados"
     },
     "moved_manually": {
       "type": "boolean",
