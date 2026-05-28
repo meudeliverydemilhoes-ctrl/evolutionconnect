@@ -8,6 +8,7 @@ import { Link } from "react-router-dom";
 export default function Grupos() {
   const queryClient = useQueryClient();
   const [selectedGroup, setSelectedGroup] = useState(null);
+  const [showChat, setShowChat] = useState(false);
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
 
@@ -73,7 +74,7 @@ export default function Grupos() {
   return (
     <div className="flex h-full min-h-0 bg-background overflow-hidden">
       {/* Lista de Grupos */}
-      <div className="w-full md:w-80 border-r flex-col bg-white min-h-0 flex">
+      <div className={`${showChat ? 'hidden md:flex' : 'flex'} w-full md:w-80 border-r flex-col bg-white min-h-0`}>
         <div className="p-4 border-b bg-[#075e54]">
           <div className="flex items-center gap-2 mb-3">
             <Users className="w-5 h-5 text-white" />
@@ -100,7 +101,7 @@ export default function Grupos() {
                 className={`w-full flex items-center gap-3 p-4 cursor-pointer hover:bg-gray-50 border-b transition-colors text-left ${
                   selectedGroup?.id === group.id ? "bg-[#f0f0f0]" : ""
                 }`}
-                onClick={() => setSelectedGroup(group)}
+                onClick={() => { setSelectedGroup(group); setShowChat(true); }}
               >
                 <div className="w-12 h-12 rounded-full bg-[#00a884] flex items-center justify-center text-white font-bold flex-shrink-0">
                   {(group.name || group.phone)?.[0]?.toUpperCase() || "G"}
@@ -116,12 +117,15 @@ export default function Grupos() {
       </div>
 
       {/* Chat do Grupo */}
-      <div className="hidden md:flex flex-1 flex-col min-h-0 min-w-0">
+      <div className={`${showChat ? 'flex' : 'hidden md:flex'} flex-1 flex-col min-h-0 min-w-0`}>
         {selectedGroup ? (
           <>
             {/* Header */}
             <div className="bg-[#f0f2f5] border-b p-4">
               <div className="flex items-center gap-3">
+                <button className="md:hidden mr-1 text-[#54656f]" onClick={() => setShowChat(false)}>
+                  <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+                </button>
                 <div className="w-10 h-10 rounded-full bg-[#00a884] flex items-center justify-center text-white font-bold flex-shrink-0">
                   {(selectedGroup.name || selectedGroup.phone)?.[0]?.toUpperCase() || "G"}
                 </div>
