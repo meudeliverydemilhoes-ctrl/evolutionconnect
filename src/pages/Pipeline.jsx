@@ -165,6 +165,7 @@ export default function Pipeline() {
         onSave={(data) => createEntry.mutate(data)}
       />
       <AddCardDialog
+        key={editingCard?.id || "edit"}
         open={!!editingCard}
         onOpenChange={(v) => !v && setEditingCard(null)}
         stages={stages}
