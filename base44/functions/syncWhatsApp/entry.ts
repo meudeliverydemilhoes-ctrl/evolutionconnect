@@ -9,9 +9,9 @@ const h = { "apikey": API_KEY, "Content-Type": "application/json" };
 function normalizePhone(raw = "", isGroup = false) {
   if (!raw) return null;
   let phone = raw
-    .replace("@g.us", "")
-    .replace("@s.whatsapp.net", "")
-    .replace("@c.us", "")
+    .replace(/@g\.us$/, "")
+    .replace(/@s\.whatsapp\.net$/, "")
+    .replace(/@c\.us$/, "")
     .replace(/@[a-z.]+$/, "");
   if (isGroup) return phone || null;
   phone = phone.replace(/\D/g, "");
@@ -33,58 +33,60 @@ async function fetchJson(path, body = null) {
   return res.json();
 }
 
-async function upsertContact(base44, phone, name, isGroup, lastMessage, stats) {
-  const existing = await base44.asServiceRole.entities.Contact.filter({ phone });
-  if (existing?.length > 0) {
-    const patch = {};
-    if (!existing[0].name && name) patch.name = name;
-    if (isGroup && !existing[0].is_group) patch.is_group = true;
-    if (lastMessage && !existing[0].last_message) patch.last_message = lastMessage;
-    if (Object.keys(patch).length > 0) {
-      await base44.asServiceRole.entities.Contact.update(existing[0].id, patch);
-      stats.contacts_updated++;
-    }
-  } else {
-    await base44.asServiceRole.entities.Contact.create({
-      phone,
-      name,
-      is_group: isGroup,
-      status: "ativo",
-      last_message: lastMessage || null,
-      last_contact_date: new Date().toISOString(),
-    });
-    stats.contacts_created++;
-  }
-}
-
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
-    const stats = { chats: 0, groups: 0, contacts_created: 0, contacts_updated: 0, errors: [] };
+    const stats = { contacts_created: 0, contacts_updated: 0, errors: [] };
 
-    // ─── 1. findContacts — mapa jid → nome ──────────────────────────────────────
-    let contactsMap = {};
-    try {
-      const rawContacts = await fetchJson(`/chat/findContacts/${INSTANCE}`, {});
-      const arr = Array.isArray(rawContacts) ? rawContacts : (rawContacts?.contacts || rawContacts?.data || []);
-      for (const c of arr) {
-        const jid = c.id || c.remoteJid || "";
-        if (jid) contactsMap[jid] = c.pushName || c.name || c.verifiedName || null;
+    // ─── 1. Carregar todos os Contact existentes de uma vez ──────────────────────
+    const allExisting = await base44.asServiceRole.entities.Contact.list("-created_date", 2000);
+    const existingMap = new Map(); // phone → contact record
+    for (const c of allExisting) {
+      if (c.phone) existingMap.set(c.phone, c);
+    }
+    console.log(`[sync] ${existingMap.size} contatos existentes carregados`);
+
+    // Coletar registros a criar/atualizar
+    const toCreate = [];
+    const toUpdate = []; // { id, patch }
+
+    function mergeContact(phone, name, isGroup, lastMessage) {
+      if (!phone) return;
+      const existing = existingMap.get(phone);
+      if (existing) {
+        const patch = {};
+        if (!existing.name && name) patch.name = name;
+        if (isGroup && !existing.is_group) patch.is_group = true;
+        if (lastMessage && !existing.last_message) patch.last_message = lastMessage;
+        if (Object.keys(patch).length > 0) {
+          // Evitar agendar o mesmo id duas vezes
+          const idx = toUpdate.findIndex(u => u.id === existing.id);
+          if (idx >= 0) Object.assign(toUpdate[idx].patch, patch);
+          else toUpdate.push({ id: existing.id, patch });
+        }
+      } else if (!existingMap.has(phone)) {
+        // Marcar como "já visto" para não duplicar dentro da função
+        existingMap.set(phone, { phone, _pending: true });
+        toCreate.push({
+          phone,
+          name: name || phone,
+          is_group: isGroup,
+          status: "ativo",
+          last_message: lastMessage || null,
+          last_contact_date: new Date().toISOString(),
+        });
       }
-      console.log(`[syncWhatsApp] ${arr.length} contatos no mapa`);
-    } catch (e) {
-      console.warn("findContacts falhou (não crítico):", e.message);
     }
 
-    // ─── 2. findChats — conversas individuais e grupos ──────────────────────────
+    // ─── 2. findChats — base dos JIDs com conversa ──────────────────────────────
+    const chatNameMap = new Map(); // jid → name from chats
     try {
       const raw = await fetchJson(`/chat/findChats/${INSTANCE}`, {});
       const chats = Array.isArray(raw) ? raw : (raw?.chats || raw?.data || []);
-      stats.chats = chats.length;
-      console.log(`[syncWhatsApp] ${chats.length} chats`);
+      console.log(`[sync] ${chats.length} chats`);
 
       for (const chat of chats) {
         const rawJid = chat.id || chat.remoteJid || "";
@@ -92,46 +94,89 @@ Deno.serve(async (req) => {
         const isGroup = rawJid.includes("@g.us");
         const phone = normalizePhone(rawJid, isGroup);
         if (!phone) continue;
-        const name = contactsMap[rawJid] || chat.name || chat.pushName || (isGroup ? `Grupo ${phone}` : phone);
+        const name = chat.name || chat.pushName || null;
         const lastMessage = chat.lastMessage?.message?.conversation
           || chat.lastMessage?.message?.extendedTextMessage?.text
           || chat.lastMessage?.message?.imageMessage?.caption
           || null;
-        try {
-          await upsertContact(base44, phone, name, isGroup, lastMessage, stats);
-        } catch (e) {
-          stats.errors.push(`chat ${phone}: ${e.message}`);
-        }
+        chatNameMap.set(rawJid, { phone, name, isGroup, lastMessage });
       }
     } catch (e) {
       stats.errors.push("findChats: " + e.message);
       console.warn("findChats falhou:", e.message);
     }
 
-    // ─── 3. fetchAllGroups — garante grupos mesmo sem mensagens ─────────────────
+    // ─── 3. findContacts — enriquecer nomes apenas dos JIDs conhecidos ──────────
+    try {
+      const rawContacts = await fetchJson(`/chat/findContacts/${INSTANCE}`, {});
+      const arr = Array.isArray(rawContacts) ? rawContacts : (rawContacts?.contacts || rawContacts?.data || []);
+      for (const c of arr) {
+        const jid = c.id || c.remoteJid || "";
+        if (chatNameMap.has(jid)) {
+          const entry = chatNameMap.get(jid);
+          if (!entry.name) entry.name = c.pushName || c.name || c.verifiedName || null;
+        }
+      }
+      console.log(`[sync] ${arr.length} contatos no mapa de nomes`);
+    } catch (e) {
+      console.warn("findContacts falhou (não crítico):", e.message);
+    }
+
+    // Processar todos os chats
+    for (const [, entry] of chatNameMap) {
+      mergeContact(entry.phone, entry.name, entry.isGroup, entry.lastMessage);
+    }
+
+    // ─── 4. fetchAllGroups — garantir grupos sem histórico ───────────────────────
     try {
       const res = await fetch(`${API_URL}/group/fetchAllGroups/${INSTANCE}?getParticipants=false`, { headers: h });
       const rawGroups = await res.json();
       const groupArr = Array.isArray(rawGroups) ? rawGroups : (rawGroups?.groups || []);
-      stats.groups = groupArr.length;
-      console.log(`[syncWhatsApp] ${groupArr.length} grupos de fetchAllGroups`);
+      console.log(`[sync] ${groupArr.length} grupos de fetchAllGroups`);
 
       for (const grp of groupArr) {
         const rawJid = grp.id || "";
         if (!rawJid) continue;
         const phone = normalizePhone(rawJid, true);
         if (!phone) continue;
-        const name = grp.subject || grp.name || `Grupo ${phone}`;
-        try {
-          await upsertContact(base44, phone, name, true, null, stats);
-        } catch (e) {
-          stats.errors.push(`group ${phone}: ${e.message}`);
-        }
+        mergeContact(phone, grp.subject || grp.name || null, true, null);
       }
     } catch (e) {
       stats.errors.push("fetchAllGroups: " + e.message);
       console.warn("fetchAllGroups falhou:", e.message);
     }
+
+    // ─── 5. Persistir: bulkCreate + updates paralelos ────────────────────────────
+    if (toCreate.length > 0) {
+      try {
+        await base44.asServiceRole.entities.Contact.bulkCreate(toCreate);
+        stats.contacts_created = toCreate.length;
+        console.log(`[sync] ${toCreate.length} contatos criados em lote`);
+      } catch (e) {
+        stats.errors.push("bulkCreate: " + e.message);
+        console.warn("bulkCreate falhou, tentando individual:", e.message);
+        for (const c of toCreate) {
+          try {
+            await base44.asServiceRole.entities.Contact.create(c);
+            stats.contacts_created++;
+          } catch (e2) {
+            stats.errors.push(`create ${c.phone}: ${e2.message}`);
+          }
+        }
+      }
+    }
+
+    // Updates em paralelo (lotes de 10 para não sobrecarregar)
+    const BATCH = 10;
+    for (let i = 0; i < toUpdate.length; i += BATCH) {
+      const slice = toUpdate.slice(i, i + BATCH);
+      await Promise.all(slice.map(({ id, patch }) =>
+        base44.asServiceRole.entities.Contact.update(id, patch).catch(e => {
+          stats.errors.push(`update ${id}: ${e.message}`);
+        })
+      ));
+    }
+    stats.contacts_updated = toUpdate.length;
 
     console.log("[syncWhatsApp] concluído:", stats);
     return Response.json({ ok: true, stats });
