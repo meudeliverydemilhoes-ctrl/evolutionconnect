@@ -230,7 +230,11 @@ export default function Chat() {
       if (!acc[key]) { acc[key] = c; }
       return acc;
     }, {})
-  );
+  ).sort((a, b) => {
+    const ta = a.last_message_time || a.last_contact_date || a.created_date || "";
+    const tb = b.last_message_time || b.last_contact_date || b.created_date || "";
+    return tb.localeCompare(ta);
+  });
 
   const extractAudio = (msg) => {
     if (!msg) return null;
