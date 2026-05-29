@@ -18,6 +18,16 @@ function extractFields(body) {
   return { nome, whatsapp, email, instagram, faturamento, urgencia_tempo, decisor, urgencia_resolver, investimento };
 }
 
+function parseFaturamento(valor) {
+  if (!valor) return 0;
+  const s = valor.toString().toLowerCase();
+  const cleaned = s.replace(/acima de|mais de|a partir de|até|ate|r\$/gi, "").trim();
+  const kMatch = cleaned.match(/([\d.,]+)\s*k/);
+  if (kMatch) return parseFloat(kMatch[1].replace(",", ".")) * 1000;
+  const numStr = cleaned.replace(/\./g, "").replace(",", ".").match(/[\d.]+/);
+  return numStr ? parseFloat(numStr[0]) : 0;
+}
+
 function normalizePhone(raw) {
   let phone = raw.replace(/\D/g, "");
   if (phone.length <= 11) phone = "55" + phone;
@@ -123,7 +133,7 @@ Deno.serve(async (req) => {
       const created = await base44.asServiceRole.entities.PipelineContact.create({
         contact_phone: phone,
         contact_name: nome || phone,
-        stage: "novo",
+        stage: parseFaturamento(faturamento) > 50000 ? "qualificado" : "novo",
         custom_data: customData,
       });
       console.log("PipelineContact criado:", created.id, customData);
