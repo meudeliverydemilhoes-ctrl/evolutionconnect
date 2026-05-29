@@ -10,12 +10,14 @@ Deno.serve(async (req) => {
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
-    // 1. Buscar todos os chats da instância
-    const chatsRes = await fetch(`${EVOLUTION_API_URL}/chat/findChats/${EVOLUTION_INSTANCE}`, {
-      headers: { "apikey": EVOLUTION_API_KEY }
+    // 1. Buscar todos os contatos da instância
+    const chatsRes = await fetch(`${EVOLUTION_API_URL}/chat/findContacts/${EVOLUTION_INSTANCE}`, {
+      method: "POST",
+      headers: { "apikey": EVOLUTION_API_KEY, "Content-Type": "application/json" },
+      body: JSON.stringify({})
     });
     const chats = await chatsRes.json();
-    console.log("Chats encontrados:", Array.isArray(chats) ? chats.length : JSON.stringify(chats));
+    console.log("Contatos encontrados:", Array.isArray(chats) ? chats.length : JSON.stringify(chats));
 
     if (!Array.isArray(chats)) {
       return Response.json({ error: "Resposta inesperada da API", raw: chats }, { status: 500 });
