@@ -4,7 +4,7 @@ import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Send, Search, MessageCircle, Phone, RefreshCw, Wifi, WifiOff, Tag, X, Plus, GitBranch, Check, Sparkles, Loader2, Download } from "lucide-react";
+import { Send, Search, MessageCircle, Phone, RefreshCw, Wifi, WifiOff, Tag, X, Plus, GitBranch, Check, Sparkles, Loader2, Download, Smile, Mic, Paperclip } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Link } from "react-router-dom";
@@ -836,23 +836,39 @@ export default function Chat() {
               </DialogContent>
             </Dialog>
 
-            <div className="p-3 bg-[#f0f2f5] border-t flex items-center gap-2">
-              <Input
-                className="flex-1 bg-white rounded-full border-0 shadow-sm px-4"
-                placeholder="Digite uma mensagem..."
-                value={message}
-                onChange={e => setMessage(e.target.value)}
-                onKeyDown={handleKeyDown}
+            <div className="px-3 py-2 bg-[#f0f2f5] border-t flex items-end gap-2">
+              <button className="w-10 h-10 flex items-center justify-center rounded-full text-[#54656f] hover:bg-black/5 transition-colors flex-shrink-0">
+                <Smile className="w-6 h-6" />
+              </button>
+              <button className="w-10 h-10 flex items-center justify-center rounded-full text-[#54656f] hover:bg-black/5 transition-colors flex-shrink-0">
+                <Paperclip className="w-5 h-5" />
+              </button>
+              <div className="flex-1 bg-white rounded-3xl shadow-sm flex items-end px-4 py-2 min-h-[40px]">
+                <textarea
+                  className="flex-1 text-sm text-[#111b21] resize-none outline-none bg-transparent max-h-32 leading-5"
+                  placeholder="Digite uma mensagem"
+                  value={message}
+                  onChange={e => setMessage(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  disabled={sending}
+                  rows={1}
+                  style={{ height: 'auto', minHeight: '20px' }}
+                  onInput={e => { e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; }}
+                />
+              </div>
+              <button
+                onClick={message.trim() ? sendMessage : undefined}
                 disabled={sending}
-              />
-              <Button
-                size="icon"
-                className="rounded-full bg-[#00a884] hover:bg-[#02906f] text-white w-10 h-10"
-                onClick={sendMessage}
-                disabled={!message.trim() || sending}
+                className="w-10 h-10 flex items-center justify-center rounded-full bg-[#00a884] hover:bg-[#02906f] text-white transition-colors flex-shrink-0 disabled:opacity-60"
               >
-                <Send className="w-4 h-4" />
-              </Button>
+                {sending ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : message.trim() ? (
+                  <Send className="w-5 h-5" />
+                ) : (
+                  <Mic className="w-5 h-5" />
+                )}
+              </button>
             </div>
           </>
         ) : (
