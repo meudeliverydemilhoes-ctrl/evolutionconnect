@@ -27,8 +27,8 @@ export default function Chat() {
     try {
       const res = await base44.functions.invoke("syncWhatsApp", {});
       queryClient.invalidateQueries({ queryKey: ["contacts"] });
-      const { created = 0, updated = 0 } = res.data || {};
-      import('sonner').then(({ toast }) => toast.success(`Sync concluído: ${created} novos, ${updated} atualizados`));
+      const s = res.data?.stats || {};
+      import('sonner').then(({ toast }) => toast.success(`Sync concluído: ${s.contacts_created ?? 0} contatos, ${s.messages_created ?? 0} mensagens importadas`));
     } catch (e) {
       import('sonner').then(({ toast }) => toast.error("Erro ao sincronizar: " + e.message));
     } finally {
