@@ -33,19 +33,24 @@ async function fetchJson(path, body = null) {
   return res.json();
 }
 
-async function upsertContact(base44, phone, name, isGroup, stats) {
+async function upsertContact(base44, phone, name, isGroup, lastMessage, stats) {
   const existing = await base44.asServiceRole.entities.Contact.filter({ phone });
   if (existing?.length > 0) {
     const patch = {};
     if (!existing[0].name && name) patch.name = name;
     if (isGroup && !existing[0].is_group) patch.is_group = true;
+    if (lastMessage && !existing[0].last_message) patch.last_message = lastMessage;
     if (Object.keys(patch).length > 0) {
       await base44.asServiceRole.entities.Contact.update(existing[0].id, patch);
       stats.contacts_updated++;
     }
   } else {
     await base44.asServiceRole.entities.Contact.create({
-      phone, name, is_group: isGroup, status: "ativo",
+      phone,
+      name,
+      is_group: isGroup,
+      status: "ativo",
+      last_message: lastMessage || null,
       last_contact_date: new Date().toISOString(),
     });
     stats.contacts_created++;
@@ -58,9 +63,9 @@ Deno.serve(async (req) => {
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
-    const stats = { chats: 0, groups: 0, contacts_created: 0, contacts_updated: 0, messages_created: 0, errors: [] };
+    const stats = { chats: 0, groups: 0, contacts_created: 0, contacts_updated: 0, errors: [] };
 
-    // ─── 1. findContacts para mapa de nomes ──────────────────────────────────────
+    // ─── 1. findContacts — mapa jid → nome ──────────────────────────────────────
     let contactsMap = {};
     try {
       const rawContacts = await fetchJson(`/chat/findContacts/${INSTANCE}`, {});
@@ -74,80 +79,39 @@ Deno.serve(async (req) => {
       console.warn("findContacts falhou (não crítico):", e.message);
     }
 
-    // ─── 2. findChats – conversas individuais e grupos ───────────────────────────
-    let chats = [];
+    // ─── 2. findChats — conversas individuais e grupos ──────────────────────────
     try {
       const raw = await fetchJson(`/chat/findChats/${INSTANCE}`, {});
-      chats = Array.isArray(raw) ? raw : (raw?.chats || raw?.data || []);
+      const chats = Array.isArray(raw) ? raw : (raw?.chats || raw?.data || []);
       stats.chats = chats.length;
-      console.log(`[syncWhatsApp] ${chats.length} chats encontrados`);
+      console.log(`[syncWhatsApp] ${chats.length} chats`);
+
+      for (const chat of chats) {
+        const rawJid = chat.id || chat.remoteJid || "";
+        if (!rawJid) continue;
+        const isGroup = rawJid.includes("@g.us");
+        const phone = normalizePhone(rawJid, isGroup);
+        if (!phone) continue;
+        const name = contactsMap[rawJid] || chat.name || chat.pushName || (isGroup ? `Grupo ${phone}` : phone);
+        const lastMessage = chat.lastMessage?.message?.conversation
+          || chat.lastMessage?.message?.extendedTextMessage?.text
+          || chat.lastMessage?.message?.imageMessage?.caption
+          || null;
+        try {
+          await upsertContact(base44, phone, name, isGroup, lastMessage, stats);
+        } catch (e) {
+          stats.errors.push(`chat ${phone}: ${e.message}`);
+        }
+      }
     } catch (e) {
       stats.errors.push("findChats: " + e.message);
       console.warn("findChats falhou:", e.message);
     }
 
-    for (const chat of chats) {
-      const rawJid = chat.id || chat.remoteJid || "";
-      if (!rawJid) continue;
-      const isGroup = rawJid.includes("@g.us");
-      const phone = normalizePhone(rawJid, isGroup);
-      if (!phone) continue;
-      const name = contactsMap[rawJid] || chat.name || chat.pushName || (isGroup ? `Grupo ${phone}` : phone);
-      try {
-        await upsertContact(base44, phone, name, isGroup, stats);
-      } catch (e) {
-        stats.errors.push(`contact ${phone}: ${e.message}`);
-        continue;
-      }
-
-      // Importar mensagens do chat
-      try {
-        const msgRes = await fetchJson(`/chat/findMessages/${INSTANCE}`, {
-          where: { key: { remoteJid: rawJid } },
-          limit: 100,
-        });
-        const msgs = Array.isArray(msgRes)
-          ? msgRes
-          : (msgRes?.messages?.records || msgRes?.messages || msgRes?.data || []);
-        if (!msgs.length) continue;
-
-        const saved = await base44.asServiceRole.entities.Message.filter({ contact_phone: phone }, "-timestamp", 200);
-        const savedKeys = new Set(saved.map(m => `${m.direction}|${m.text}|${new Date(m.timestamp).getTime()}`));
-        let lastDate = null, lastText = null;
-
-        for (const msg of msgs) {
-          const direction = msg.key?.fromMe === true ? "sent" : "received";
-          const text =
-            msg.message?.conversation ||
-            msg.message?.extendedTextMessage?.text ||
-            msg.message?.imageMessage?.caption ||
-            msg.message?.videoMessage?.caption ||
-            msg.message?.documentMessage?.caption ||
-            (msg.message?.audioMessage ? "[áudio]" : null) ||
-            (msg.message?.stickerMessage ? "[sticker]" : null) ||
-            null;
-          if (!text) continue;
-          const ts = msg.messageTimestamp ? new Date(Number(msg.messageTimestamp) * 1000) : new Date();
-          const k = `${direction}|${text}|${ts.getTime()}`;
-          if (savedKeys.has(k)) continue;
-          await base44.asServiceRole.entities.Message.create({ contact_phone: phone, text, direction, timestamp: ts.toISOString() });
-          stats.messages_created++;
-          savedKeys.add(k);
-          if (!lastDate || ts > lastDate) { lastDate = ts; lastText = text; }
-        }
-        if (lastDate) {
-          const cl = await base44.asServiceRole.entities.Contact.filter({ phone });
-          if (cl?.length > 0) await base44.asServiceRole.entities.Contact.update(cl[0].id, { last_message: lastText, last_contact_date: lastDate.toISOString() });
-        }
-      } catch (e) {
-        stats.errors.push(`messages ${phone}: ${e.message}`);
-      }
-    }
-
-    // ─── 3. fetchAllGroups – garante todos os grupos mesmo sem mensagens ─────────
+    // ─── 3. fetchAllGroups — garante grupos mesmo sem mensagens ─────────────────
     try {
-      const groupsRes = await fetch(`${API_URL}/group/fetchAllGroups/${INSTANCE}?getParticipants=false`, { headers: h });
-      const rawGroups = await groupsRes.json();
+      const res = await fetch(`${API_URL}/group/fetchAllGroups/${INSTANCE}?getParticipants=false`, { headers: h });
+      const rawGroups = await res.json();
       const groupArr = Array.isArray(rawGroups) ? rawGroups : (rawGroups?.groups || []);
       stats.groups = groupArr.length;
       console.log(`[syncWhatsApp] ${groupArr.length} grupos de fetchAllGroups`);
@@ -159,7 +123,7 @@ Deno.serve(async (req) => {
         if (!phone) continue;
         const name = grp.subject || grp.name || `Grupo ${phone}`;
         try {
-          await upsertContact(base44, phone, name, true, stats);
+          await upsertContact(base44, phone, name, true, null, stats);
         } catch (e) {
           stats.errors.push(`group ${phone}: ${e.message}`);
         }
