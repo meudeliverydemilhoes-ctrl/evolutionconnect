@@ -3,8 +3,9 @@ import { base44 } from "@/api/base44Client";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Plus, RefreshCw, Phone, Settings, Pencil } from "lucide-react";
+import { Plus, RefreshCw, Settings } from "lucide-react";
 import PipelineSettingsDialog from "@/components/pipeline/PipelineSettingsDialog";
+import PipelineCard from "@/components/pipeline/PipelineCard";
 import AddCardDialog from "@/components/pipeline/AddCardDialog";
 
 const DEFAULT_STAGES = [
@@ -100,38 +101,7 @@ export default function Pipeline() {
                       >
                         {cards.map((card, idx) => (
                           <Draggable key={card.id} draggableId={card.id} index={idx}>
-                            {(p) => (
-                              <div
-                                ref={p.innerRef}
-                                {...p.draggableProps}
-                                {...p.dragHandleProps}
-                                className="bg-white rounded-lg p-3 shadow-sm select-none cursor-grab active:cursor-grabbing"
-                                >
-                                 <button
-                                   className="float-right ml-2 p-0.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600"
-                                   onClick={(e) => { e.stopPropagation(); setEditingCard(card); }}
-                                   onMouseDown={(e) => e.stopPropagation()}
-                                 >
-                                   <Pencil className="w-3 h-3" />
-                                 </button>
-                                <p className="font-medium text-sm text-[#111b21]">{card.contact_name || card.contact_phone}</p>
-                                <div className="flex items-center gap-1 mt-1">
-                                  <Phone className="w-3 h-3 text-gray-400" />
-                                  <span className="text-xs text-gray-500">{card.contact_phone}</span>
-                                </div>
-                                {card.deal_value > 0 && (
-                                  <p className="text-xs text-green-600 font-semibold mt-1">R$ {card.deal_value.toLocaleString("pt-BR")}</p>
-                                )}
-                                {card.custom_data && customFields.map(f => (
-                                  card.custom_data[f.id] ? (
-                                    <div key={f.id} className="mt-1">
-                                      <span className="text-[10px] text-gray-400">{f.label}: </span>
-                                      <span className="text-[11px] text-gray-600">{card.custom_data[f.id]}</span>
-                                    </div>
-                                  ) : null
-                                ))}
-                              </div>
-                            )}
+                            {(p) => <PipelineCard p={p} card={card} customFields={customFields} onEdit={() => setEditingCard(card)} />}
                           </Draggable>
                         ))}
                         {provided.placeholder}
