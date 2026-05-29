@@ -171,6 +171,7 @@ Deno.serve(async (req) => {
       if (contacts && contacts.length > 0) {
         await base44.asServiceRole.entities.Contact.update(contacts[0].id, {
           last_message: text,
+          last_message_time: msgTime.toISOString(),
           last_contact_date: msgTime.toISOString(),
         });
       }
@@ -186,6 +187,7 @@ Deno.serve(async (req) => {
       // Sempre atualizar is_group se for true (mesmo que já tenha sido marcado)
       const updateData = {
         last_message: text,
+        last_message_time: msgTime.toISOString(),
         last_contact_date: msgTime.toISOString(),
         name: isGroup && pushName ? pushName : (contact.name || pushName),
       };
@@ -199,6 +201,7 @@ Deno.serve(async (req) => {
         phone,
         name: pushName || phone,
         last_message: text,
+        last_message_time: msgTime.toISOString(),
         last_contact_date: msgTime.toISOString(),
         status: "ativo",
         is_group: isGroup || false,

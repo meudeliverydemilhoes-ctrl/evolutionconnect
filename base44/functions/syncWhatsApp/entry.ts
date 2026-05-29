@@ -53,7 +53,7 @@ Deno.serve(async (req) => {
     const toCreate = [];
     const toUpdate = []; // { id, patch }
 
-    function mergeContact(phone, name, isGroup, lastMessage) {
+    function mergeContact(phone, name, isGroup, lastMessage, lastMsgTs) {
       if (!phone) return;
       const existing = existingMap.get(phone);
       if (existing) {
@@ -61,6 +61,7 @@ Deno.serve(async (req) => {
         if (!existing.name && name) patch.name = name;
         if (isGroup && !existing.is_group) patch.is_group = true;
         if (lastMessage && !existing.last_message) patch.last_message = lastMessage;
+        if (lastMsgTs) patch.last_message_time = lastMsgTs;
         if (Object.keys(patch).length > 0) {
           // Evitar agendar o mesmo id duas vezes
           const idx = toUpdate.findIndex(u => u.id === existing.id);
@@ -76,6 +77,7 @@ Deno.serve(async (req) => {
           is_group: isGroup,
           status: "ativo",
           last_message: lastMessage || null,
+          last_message_time: lastMsgTs || new Date().toISOString(),
           last_contact_date: new Date().toISOString(),
         });
       }
@@ -99,7 +101,10 @@ Deno.serve(async (req) => {
           || chat.lastMessage?.message?.extendedTextMessage?.text
           || chat.lastMessage?.message?.imageMessage?.caption
           || null;
-        chatNameMap.set(rawJid, { phone, name, isGroup, lastMessage });
+        const lastMsgTs = chat.lastMessage?.messageTimestamp
+          ? new Date(Number(chat.lastMessage.messageTimestamp) * 1000).toISOString()
+          : (chat.conversationTimestamp ? new Date(Number(chat.conversationTimestamp) * 1000).toISOString() : null);
+        chatNameMap.set(rawJid, { phone, name, isGroup, lastMessage, lastMsgTs });
       }
     } catch (e) {
       stats.errors.push("findChats: " + e.message);
@@ -124,7 +129,7 @@ Deno.serve(async (req) => {
 
     // Processar todos os chats
     for (const [, entry] of chatNameMap) {
-      mergeContact(entry.phone, entry.name, entry.isGroup, entry.lastMessage);
+      mergeContact(entry.phone, entry.name, entry.isGroup, entry.lastMessage, entry.lastMsgTs);
     }
 
     // ─── 4. fetchAllGroups — garantir grupos sem histórico ───────────────────────
@@ -139,7 +144,7 @@ Deno.serve(async (req) => {
         if (!rawJid) continue;
         const phone = normalizePhone(rawJid, true);
         if (!phone) continue;
-        mergeContact(phone, grp.subject || grp.name || null, true, null);
+        mergeContact(phone, grp.subject || grp.name || null, true, null, null);
       }
     } catch (e) {
       stats.errors.push("fetchAllGroups: " + e.message);

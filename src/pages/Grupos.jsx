@@ -16,7 +16,7 @@ export default function Grupos() {
   const { data: rawContacts = [], isLoading, error } = useQuery({
     queryKey: ["contacts"],
     queryFn: async () => {
-      const allContacts = await base44.entities.Contact.list("-last_contact_date", 500);
+      const allContacts = await base44.entities.Contact.list("-last_message_time", 1000);
       return allContacts.filter(c => c.phone && c.is_group === true);
     },
     refetchInterval: 2000,
