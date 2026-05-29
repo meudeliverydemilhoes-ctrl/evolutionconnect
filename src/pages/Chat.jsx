@@ -4,7 +4,7 @@ import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Send, Search, MessageCircle, Phone, RefreshCw, Wifi, WifiOff, Tag, X, Plus, GitBranch, Check, Sparkles, Loader2 } from "lucide-react";
+import { Send, Search, MessageCircle, Phone, RefreshCw, Wifi, WifiOff, Tag, X, Plus, GitBranch, Check, Sparkles, Loader2, Download } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Link } from "react-router-dom";
@@ -20,6 +20,21 @@ export default function Chat() {
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
   const [socketConnected, setSocketConnected] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+
+  const syncContacts = async () => {
+    setSyncing(true);
+    try {
+      const res = await base44.functions.invoke("syncEvolutionContacts", {});
+      queryClient.invalidateQueries({ queryKey: ["contacts"] });
+      const { created = 0, updated = 0 } = res.data || {};
+      import('sonner').then(({ toast }) => toast.success(`Sync concluído: ${created} novos, ${updated} atualizados`));
+    } catch (e) {
+      import('sonner').then(({ toast }) => toast.error("Erro ao sincronizar: " + e.message));
+    } finally {
+      setSyncing(false);
+    }
+  };
   const [profilePics, setProfilePics] = useState({});
   const [newTagName, setNewTagName] = useState("");
   const [newTagColor, setNewTagColor] = useState("#00a884");
@@ -366,7 +381,15 @@ export default function Chat() {
           <div className="flex items-center gap-2 mb-3">
             <MessageCircle className="w-5 h-5 text-white" />
             <h1 className="font-bold text-lg text-white">WhatsApp</h1>
-            <span className="ml-auto flex items-center gap-1 text-xs text-white/80">
+            <button
+              onClick={syncContacts}
+              disabled={syncing}
+              className="ml-auto p-1 rounded hover:bg-white/10 text-white/80 hover:text-white transition-colors"
+              title="Importar conversas existentes"
+            >
+              {syncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+            </button>
+            <span className="flex items-center gap-1 text-xs text-white/80">
               {socketConnected ? <Wifi className="w-3 h-3 text-green-300" /> : <WifiOff className="w-3 h-3 text-red-300" />}
               {socketConnected ? "Online" : (
                 <Link to="/whatsapp-connect" className="text-red-300 hover:text-red-100 underline">Reconectar</Link>
