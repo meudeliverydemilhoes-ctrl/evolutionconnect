@@ -165,7 +165,46 @@ Deno.serve(async (req) => {
       return Response.json({ status: "ignored - own message" });
     }
 
-    // Ignorar eventos que não são de mensagem
+    // Ignorar eventos que não são de mensagem (deixar passar os novos eventos de sync)
+    const SYNC_EVENTS = ["CONTACTS_SET", "CONTACTS_UPSERT", "CHATS_SET", "CHATS_UPSERT", "GROUPS_UPSERT"];
+    if (event && SYNC_EVENTS.includes(event)) {
+      // Processar upsert de grupos via webhook
+      if (event === "GROUPS_UPSERT") {
+        const groups = Array.isArray(data) ? data : [data];
+        for (const grp of groups) {
+          const rawJid = grp?.id || "";
+          if (!rawJid.includes("@g.us")) continue;
+          const phone = rawJid.replace("@g.us", "").replace(/@[a-z.]+$/, "");
+          if (!phone) continue;
+          const name = grp.subject || grp.name || `Grupo ${phone}`;
+          const existing = await base44.asServiceRole.entities.Contact.filter({ phone });
+          if (existing?.length > 0) {
+            if (!existing[0].is_group) await base44.asServiceRole.entities.Contact.update(existing[0].id, { is_group: true, name: existing[0].name || name });
+          } else {
+            await base44.asServiceRole.entities.Contact.create({ phone, name, is_group: true, status: "ativo", tags: [] });
+          }
+        }
+      }
+      // Processar upsert de contatos individuais
+      if (event === "CONTACTS_UPSERT") {
+        const ctList = Array.isArray(data) ? data : [data];
+        for (const ct of ctList) {
+          const rawJid = ct?.id || "";
+          if (!rawJid || rawJid.includes("@g.us")) continue;
+          let phone = rawJid.replace("@s.whatsapp.net", "").replace("@c.us", "").replace(/@[a-z.]+$/, "").replace(/\D/g, "");
+          if (phone.startsWith("55") && phone.length === 12) phone = phone.slice(0, 4) + "9" + phone.slice(4);
+          if (!phone) continue;
+          const name = ct.pushName || ct.name || ct.verifiedName || null;
+          const existing = await base44.asServiceRole.entities.Contact.filter({ phone });
+          if (!existing?.length && name) {
+            await base44.asServiceRole.entities.Contact.create({ phone, name, status: "ativo", tags: [] });
+          } else if (existing?.length && !existing[0].name && name) {
+            await base44.asServiceRole.entities.Contact.update(existing[0].id, { name });
+          }
+        }
+      }
+      return Response.json({ status: "ok - sync event: " + event });
+    }
     if (event && !["messages.upsert", "MESSAGES_UPSERT", "message", "messages.update"].includes(event)) {
       console.log("Evento ignorado:", event);
       return Response.json({ status: "ignored - event: " + event });
@@ -189,8 +228,9 @@ Deno.serve(async (req) => {
     // Grupos: salvar como contato/mensagem mas sem acionar IA
     const isGroup = remoteJid.includes("@g.us");
     if (isGroup) {
-      const groupPhone = remoteJid;
-      const groupPushName = data?.pushName || data?.notifyName || remoteJid;
+      // Normalizar phone do grupo removendo @g.us
+      const groupPhone = remoteJid.replace("@g.us", "").replace(/@[a-z.]+$/, "");
+      const groupPushName = data?.pushName || data?.notifyName || groupPhone;
       const groupMessageText = message?.conversation
         || message?.extendedTextMessage?.text
         || message?.imageMessage?.caption
