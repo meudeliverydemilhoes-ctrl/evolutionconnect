@@ -4,7 +4,7 @@ import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Send, Search, MessageCircle, Phone, RefreshCw, Wifi, WifiOff, Tag, X, Plus, GitBranch, Check, Sparkles, Loader2, Download, Smile, Mic, Paperclip } from "lucide-react";
+import { Send, Search, MessageCircle, Phone, RefreshCw, Wifi, WifiOff, Tag, X, Plus, GitBranch, Check, Sparkles, Loader2, Download, Smile, Mic, Paperclip, MoreVertical, Pencil, Trash2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Link } from "react-router-dom";
@@ -20,6 +20,26 @@ export default function Chat() {
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
   const [socketConnected, setSocketConnected] = useState(false);
+  const [editingMsg, setEditingMsg] = useState(null);
+  const [editText, setEditText] = useState("");
+  const [msgMenuId, setMsgMenuId] = useState(null);
+  const msgMenuRef = useRef(null);
+
+  useEffect(() => {
+    const handler = (e) => { if (msgMenuRef.current && !msgMenuRef.current.contains(e.target)) setMsgMenuId(null); };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const deleteMessage = useMutation({
+    mutationFn: (id) => base44.entities.Message.delete(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["messages", selectedContact?.phone] }),
+  });
+
+  const editMessage = useMutation({
+    mutationFn: ({ id, text }) => base44.entities.Message.update(id, { text }),
+    onSuccess: () => { setEditingMsg(null); queryClient.invalidateQueries({ queryKey: ["messages", selectedContact?.phone] }); },
+  });
   const [syncing, setSyncing] = useState(false);
 
   const syncContacts = async () => {
@@ -635,7 +655,8 @@ export default function Chat() {
               {allMessages.map((msg, i) => {
                 const audioUrl = extractAudio(msg.message);
                 return (
-                  <div key={msg.id || i} className={`flex ${msg.direction === "sent" ? "justify-end" : "justify-start"}`}>
+                  <div key={msg.id || i} className={`flex ${msg.direction === "sent" ? "justify-end" : "justify-start"} group`}>
+                    <div className={`flex items-end gap-1 ${msg.direction === "sent" ? "flex-row-reverse" : "flex-row"}`}>
                     <div className={`max-w-xs lg:max-w-md px-3 py-2 rounded-lg text-sm shadow-sm relative ${
                       msg.direction === "sent"
                         ? "bg-[#d9fdd3] text-[#111b21] rounded-tr-none"
@@ -649,12 +670,56 @@ export default function Chat() {
                           </audio>
                         </div>
                       )}
-                      {msg.text && <p className="whitespace-pre-wrap">{msg.text}</p>}
-                      {!msg.text && !audioUrl && <p className="italic text-gray-500">[áudio]</p>}
+                      {editingMsg === msg.id ? (
+                        <div className="flex gap-1 items-center">
+                          <input
+                            className="text-sm border rounded px-2 py-0.5 flex-1 focus:outline-none focus:ring-1 focus:ring-[#00a884] bg-white"
+                            value={editText}
+                            onChange={e => setEditText(e.target.value)}
+                            onKeyDown={e => { if (e.key === "Enter") editMessage.mutate({ id: msg.id, text: editText }); if (e.key === "Escape") setEditingMsg(null); }}
+                            autoFocus
+                          />
+                          <button onClick={() => editMessage.mutate({ id: msg.id, text: editText })} className="text-green-600"><Check className="w-3.5 h-3.5" /></button>
+                          <button onClick={() => setEditingMsg(null)} className="text-gray-400"><X className="w-3.5 h-3.5" /></button>
+                        </div>
+                      ) : (
+                        <>
+                          {msg.text && <p className="whitespace-pre-wrap">{msg.text}</p>}
+                          {!msg.text && !audioUrl && <p className="italic text-gray-500">[áudio]</p>}
+                        </>
+                      )}
                       <p className="text-[10px] text-[#667781] mt-1 text-right">
                         {msg.timestamp ? format(new Date(msg.timestamp), "HH:mm") : ""}
                         {msg.direction === "sent" && <span className="ml-1 text-[#53bdeb]">✓✓</span>}
                       </p>
+                    </div>
+                    {/* Menu por mensagem */}
+                    <div className="relative opacity-0 group-hover:opacity-100 transition-opacity" ref={msgMenuId === msg.id ? msgMenuRef : null}>
+                      <button
+                        className="p-1 rounded-full hover:bg-black/10"
+                        onClick={() => setMsgMenuId(msgMenuId === msg.id ? null : msg.id)}
+                      >
+                        <MoreVertical className="w-3.5 h-3.5 text-gray-500" />
+                      </button>
+                      {msgMenuId === msg.id && (
+                        <div className={`absolute z-10 bg-white rounded-lg shadow-lg border py-1 min-w-[120px] ${
+                          msg.direction === "sent" ? "right-0" : "left-0"
+                        } bottom-6`}>
+                          <button
+                            className="w-full px-3 py-1.5 text-sm text-left hover:bg-gray-50 flex items-center gap-2"
+                            onClick={() => { setEditingMsg(msg.id); setEditText(msg.text || ""); setMsgMenuId(null); }}
+                          >
+                            <Pencil className="w-3.5 h-3.5" /> Editar
+                          </button>
+                          <button
+                            className="w-full px-3 py-1.5 text-sm text-left hover:bg-red-50 text-red-500 flex items-center gap-2"
+                            onClick={() => { deleteMessage.mutate(msg.id); setMsgMenuId(null); }}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" /> Apagar
+                          </button>
+                        </div>
+                      )}
+                    </div>
                     </div>
                   </div>
                 );
