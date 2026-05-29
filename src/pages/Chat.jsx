@@ -25,7 +25,7 @@ export default function Chat() {
   const syncContacts = async () => {
     setSyncing(true);
     try {
-      const res = await base44.functions.invoke("syncEvolutionContacts", {});
+      const res = await base44.functions.invoke("syncWhatsApp", {});
       queryClient.invalidateQueries({ queryKey: ["contacts"] });
       const { created = 0, updated = 0 } = res.data || {};
       import('sonner').then(({ toast }) => toast.success(`Sync concluído: ${created} novos, ${updated} atualizados`));
