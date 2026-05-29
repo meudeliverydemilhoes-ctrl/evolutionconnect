@@ -1,6 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
-import { Users, RefreshCw, MessageCircle, Send } from "lucide-react";
+import { Users, RefreshCw, MessageCircle, Send, Trash2, Pencil, MoreVertical, X, Check } from "lucide-react";
+import { useMutation } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
@@ -11,6 +12,36 @@ export default function Grupos() {
   const [showChat, setShowChat] = useState(false);
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
+  const [editingMsg, setEditingMsg] = useState(null);
+  const [editText, setEditText] = useState("");
+  const [msgMenuId, setMsgMenuId] = useState(null);
+  const menuRef = useRef(null);
+
+  // Fechar menu ao clicar fora
+  useEffect(() => {
+    const handler = (e) => { if (menuRef.current && !menuRef.current.contains(e.target)) setMsgMenuId(null); };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const deleteConversation = useMutation({
+    mutationFn: async () => {
+      const all = await base44.entities.Message.list("-created_date", 1000);
+      const toDelete = all.filter(m => m.contact_phone === selectedGroup.phone);
+      await Promise.all(toDelete.map(m => base44.entities.Message.delete(m.id)));
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["messages", selectedGroup.phone] }),
+  });
+
+  const deleteMessage = useMutation({
+    mutationFn: (id) => base44.entities.Message.delete(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["messages", selectedGroup.phone] }),
+  });
+
+  const editMessage = useMutation({
+    mutationFn: ({ id, text }) => base44.entities.Message.update(id, { text }),
+    onSuccess: () => { setEditingMsg(null); queryClient.invalidateQueries({ queryKey: ["messages", selectedGroup.phone] }); },
+  });
 
   // Busca apenas grupos
   const { data: rawContacts = [], isLoading, error } = useQuery({
@@ -133,12 +164,17 @@ export default function Grupos() {
                   <p className="font-semibold text-[#111b21]">{selectedGroup.name || selectedGroup.phone}</p>
                   <p className="text-xs text-[#667781]">{selectedGroup.phone}</p>
                 </div>
+                <Button variant="ghost" size="sm" onClick={() => queryClient.invalidateQueries({ queryKey: ["messages", selectedGroup.phone] })}>
+                  <RefreshCw className="w-4 h-4" />
+                </Button>
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => queryClient.invalidateQueries({ queryKey: ["messages", selectedGroup.phone] })}
+                  className="text-red-500 hover:text-red-600 hover:bg-red-50"
+                  title="Apagar conversa"
+                  onClick={() => { if (confirm("Apagar todas as mensagens desta conversa?")) deleteConversation.mutate(); }}
                 >
-                  <RefreshCw className="w-4 h-4" />
+                  <Trash2 className="w-4 h-4" />
                 </Button>
               </div>
             </div>
@@ -152,21 +188,62 @@ export default function Grupos() {
                 </div>
               ) : (
                 messages.map((msg, i) => (
-                  <div key={msg.id || i} className={`flex ${msg.direction === "sent" ? "justify-end" : "justify-start"}`}>
-                    <div
-                      className={`max-w-xs px-3 py-2 rounded-lg text-sm shadow-sm ${
-                        msg.direction === "sent"
-                          ? "bg-[#d9fdd3] text-[#111b21] rounded-tr-none"
-                          : "bg-white text-[#111b21] rounded-tl-none"
-                      }`}
-                    >
-                      <p className="whitespace-pre-wrap break-words">{msg.text}</p>
-                      <p className="text-[10px] text-[#667781] mt-1 text-right">
-                        {new Date(msg.timestamp || msg.created_date).toLocaleTimeString("pt-BR", {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </p>
+                  <div key={msg.id || i} className={`flex ${msg.direction === "sent" ? "justify-end" : "justify-start"} group`}>
+                    {/* Menu de ações */}
+                    <div className={`flex items-end gap-1 ${msg.direction === "sent" ? "flex-row-reverse" : "flex-row"}`}>
+                      <div
+                        className={`max-w-xs px-3 py-2 rounded-lg text-sm shadow-sm ${
+                          msg.direction === "sent"
+                            ? "bg-[#d9fdd3] text-[#111b21] rounded-tr-none"
+                            : "bg-white text-[#111b21] rounded-tl-none"
+                        }`}
+                      >
+                        {editingMsg === msg.id ? (
+                          <div className="flex gap-1 items-center">
+                            <input
+                              className="text-sm border rounded px-2 py-0.5 flex-1 focus:outline-none focus:ring-1 focus:ring-[#00a884]"
+                              value={editText}
+                              onChange={e => setEditText(e.target.value)}
+                              onKeyDown={e => { if (e.key === "Enter") editMessage.mutate({ id: msg.id, text: editText }); if (e.key === "Escape") setEditingMsg(null); }}
+                              autoFocus
+                            />
+                            <button onClick={() => editMessage.mutate({ id: msg.id, text: editText })} className="text-green-600"><Check className="w-3.5 h-3.5" /></button>
+                            <button onClick={() => setEditingMsg(null)} className="text-gray-400"><X className="w-3.5 h-3.5" /></button>
+                          </div>
+                        ) : (
+                          <p className="whitespace-pre-wrap break-words">{msg.text}</p>
+                        )}
+                        <p className="text-[10px] text-[#667781] mt-1 text-right">
+                          {new Date(msg.timestamp || msg.created_date).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                        </p>
+                      </div>
+                      {/* Botão de menu por mensagem */}
+                      <div className="relative opacity-0 group-hover:opacity-100 transition-opacity" ref={msgMenuId === msg.id ? menuRef : null}>
+                        <button
+                          className="p-1 rounded-full hover:bg-black/10"
+                          onClick={() => setMsgMenuId(msgMenuId === msg.id ? null : msg.id)}
+                        >
+                          <MoreVertical className="w-3.5 h-3.5 text-gray-500" />
+                        </button>
+                        {msgMenuId === msg.id && (
+                          <div className={`absolute z-10 bg-white rounded-lg shadow-lg border py-1 min-w-[120px] ${
+                            msg.direction === "sent" ? "right-0" : "left-0"
+                          } bottom-6`}>
+                            <button
+                              className="w-full px-3 py-1.5 text-sm text-left hover:bg-gray-50 flex items-center gap-2"
+                              onClick={() => { setEditingMsg(msg.id); setEditText(msg.text); setMsgMenuId(null); }}
+                            >
+                              <Pencil className="w-3.5 h-3.5" /> Editar
+                            </button>
+                            <button
+                              className="w-full px-3 py-1.5 text-sm text-left hover:bg-red-50 text-red-500 flex items-center gap-2"
+                              onClick={() => { deleteMessage.mutate(msg.id); setMsgMenuId(null); }}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" /> Apagar
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 ))
