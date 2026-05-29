@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,8 +10,8 @@ export default function AddCardDialog({ open, onOpenChange, stages, customFields
 
   const isEditing = !!initialData;
 
-  const handleOpen = (val) => {
-    if (val) {
+  useEffect(() => {
+    if (open) {
       if (initialData) {
         setForm({
           contact_phone: initialData.contact_phone || "",
@@ -26,6 +26,9 @@ export default function AddCardDialog({ open, onOpenChange, stages, customFields
         setCustomData({});
       }
     }
+  }, [open, initialData]);
+
+  const handleOpen = (val) => {
     onOpenChange(val);
   };
 
