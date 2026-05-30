@@ -272,8 +272,12 @@ export default function Chat() {
         "-created_date",
         200
       );
-      if (msgs) msgs.reverse();
-      return msgs || [];
+      if (!msgs) return [];
+      return msgs.sort((a, b) => {
+        const ta = new Date(a.timestamp || a.created_date || 0).getTime();
+        const tb = new Date(b.timestamp || b.created_date || 0).getTime();
+        return ta - tb;
+      });
     },
     enabled: !!selectedContact,
     refetchInterval: 2000,
