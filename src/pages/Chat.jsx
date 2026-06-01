@@ -258,10 +258,28 @@ export default function Chat() {
 
   const extractAudio = (msg) => {
     if (!msg) return null;
+    // Procurar em msg.message (formato da Evolution API)
+    if (msg.message?.audioMessage?.url) return msg.message.audioMessage.url;
+    if (msg.message?.pttMessage?.url) return msg.message.pttMessage.url;
+    // Procurar direto em msg (formato alternativo)
     if (msg.audioMessage?.url) return msg.audioMessage.url;
     if (msg.pttMessage?.url) return msg.pttMessage.url;
     return null;
   };
+
+  const extractImage = (msg) => {
+    if (!msg) return null;
+    // Procurar em msg.message.imageMessage (formato da Evolution API)
+    if (msg.message?.imageMessage?.url) return msg.message.imageMessage.url;
+    // Procurar em msg.imageMessage (formato alternativo)
+    if (msg.imageMessage?.url) return msg.imageMessage.url;
+    // Procurar em msg.image (campo direto)
+    if (msg.image) return msg.image;
+    // Procurar em msg.message.image
+    if (msg.message?.image) return msg.message.image;
+    return null;
+  };
+
 
   const { data: allMessages = [], refetch: refetchMessages } = useQuery({
     queryKey: ["messages", selectedContact?.phone],
@@ -270,7 +288,7 @@ export default function Chat() {
       const msgs = await base44.entities.Message.filter(
         { contact_phone: selectedContact.phone },
         "-created_date",
-        200
+        10000
       );
       if (!msgs) return [];
       return msgs.sort((a, b) => {
@@ -657,7 +675,7 @@ export default function Chat() {
                 </div>
               )}
               {allMessages.map((msg, i) => {
-                const audioUrl = extractAudio(msg.message);
+                const audioUrl = extractAudio(msg);
                 return (
                   <div key={msg.id || i} className={`flex ${msg.direction === "sent" ? "justify-end" : "justify-start"} group`}>
                     <div className={`flex items-end gap-1 ${msg.direction === "sent" ? "flex-row-reverse" : "flex-row"}`}>
@@ -666,6 +684,14 @@ export default function Chat() {
                         ? "bg-[#d9fdd3] text-[#111b21] rounded-tr-none"
                         : "bg-white text-[#111b21] rounded-tl-none"
                     }`}>
+                      {(() => {
+                        const imageUrl = extractImage(msg);
+                        return imageUrl ? (
+                          <div className="mb-2 max-w-xs rounded overflow-hidden">
+                            <img src={imageUrl} alt="" className="w-full h-auto" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                          </div>
+                        ) : null;
+                      })()}
                       {audioUrl && (
                         <div className="mb-2">
                           <audio controls className="w-full max-w-xs rounded" style={{height: '32px'}}>
