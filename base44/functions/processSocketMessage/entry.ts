@@ -118,9 +118,9 @@ Deno.serve(async (req) => {
     const body = await req.json();
     console.log("processSocketMessage payload:", JSON.stringify(body));
 
-    let { phone, pushName, text, timestamp, fromMe, isGroup } = body;
+    let { phone, pushName, text, timestamp, fromMe, isGroup, photo, isFacebookLead } = body;
 
-    console.log("[processSocketMessage] phone:", phone, "pushName:", pushName, "isGroup:", isGroup, "fromMe:", fromMe);
+    console.log("[processSocketMessage] phone:", phone, "pushName:", pushName, "isGroup:", isGroup, "fromMe:", fromMe, "isFacebookLead:", isFacebookLead);
 
     if (!phone || !text) {
       return Response.json({ status: "ignored - missing phone or text" });
@@ -190,6 +190,8 @@ Deno.serve(async (req) => {
         last_message_time: msgTime.toISOString(),
         last_contact_date: msgTime.toISOString(),
         name: isGroup && pushName ? pushName : (contact.name || pushName),
+        profile_pic: photo || contact.profile_pic,
+        is_facebook_lead: isFacebookLead || contact.is_facebook_lead,
       };
       // Se é grupo, marca como tal. Não desmarca se não é (pode ser contato individual que recebe de grupo)
       if (isGroup) {
@@ -205,6 +207,8 @@ Deno.serve(async (req) => {
         last_contact_date: msgTime.toISOString(),
         status: "ativo",
         is_group: isGroup || false,
+        profile_pic: photo || null,
+        is_facebook_lead: isFacebookLead || false,
       });
     }
 
@@ -248,3 +252,4 @@ Deno.serve(async (req) => {
     return Response.json({ error: error.message }, { status: 500 });
   }
 });
+
