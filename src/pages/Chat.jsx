@@ -240,7 +240,7 @@ export default function Chat() {
 
   const { data: rawContacts = [], isLoading } = useQuery({
     queryKey: ["contacts"],
-    queryFn: () => base44.entities.Contact.list("-last_message_time", 1000),
+    queryFn: () => base44.entities.Contact.list("-last_message_time", 50000),
   });
 
   const contacts = Object.values(
