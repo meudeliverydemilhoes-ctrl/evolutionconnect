@@ -1,6 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
-async function sendWhatsAppMessage(phone, message) {
+async function sendWhatsAppMessage(phone, message, jidOverride) {
   const EVOLUTION_API_URL = Deno.env.get("EVOLUTION_API_URL");
   const EVOLUTION_API_KEY = Deno.env.get("EVOLUTION_API_KEY");
   const EVOLUTION_INSTANCE = Deno.env.get("EVOLUTION_INSTANCE");
@@ -13,7 +13,7 @@ async function sendWhatsAppMessage(phone, message) {
       "apikey": EVOLUTION_API_KEY,
     },
     body: JSON.stringify({
-      number: phone,
+      number: jidOverride || phone,
       text: message,
     }),
   });
@@ -217,7 +217,7 @@ Deno.serve(async (req) => {
     // Suporte ao novo formato @lid do WhatsApp
     // Tentar todas as possibilidades de telefone disponíveis no payload
     const remoteJid = key?.remoteJid || "";
-    const phoneRaw = key?.remoteJidAlt 
+    let phoneRaw = key?.remoteJidAlt 
       || data?.remoteJidAlt 
       || data?.participant
       || (remoteJid.includes("@lid") ? null : remoteJid)
@@ -266,14 +266,22 @@ Deno.serve(async (req) => {
       return Response.json({ status: "ok - group saved" });
     }
 
+    // FIX: Handle @lid contacts without remoteJidAlt (first CTWA ad message)
+    let isLidContact = false;
     if (!phoneRaw) {
-      console.log("ATENÇÃO @lid sem alternativa - data completo:", JSON.stringify(data), "key:", JSON.stringify(key));
-      return Response.json({ status: "ignored - @lid sem alternativa" });
+      if (remoteJid.includes("@lid")) {
+        phoneRaw = remoteJid;
+        isLidContact = true;
+        console.log("@lid sem alternativa - processando com lid JID:", remoteJid);
+      } else {
+        console.log("ATENÇÃO sem phone - data completo:", JSON.stringify(data), "key:", JSON.stringify(key));
+        return Response.json({ status: "ignored - sem phone" });
+      }
     }
 
     // phoneRaw pode ser ex: 555199667558@s.whatsapp.net (faltando dígito 9)
     // Corrigir número BR: 55 + DDD(2) + 9 + número(8) = 13 dígitos total
-    let phone = phoneRaw.replace("@s.whatsapp.net", "").replace("@c.us", "").replace(/\D/g, "");
+    let phone = phoneRaw.replace("@s.whatsapp.net", "").replace("@c.us", "").replace("@lid", "").replace(/\D/g, "");
     // Se número BR (começa com 55) e tem 12 dígitos (sem o 9), inserir o 9
     if (phone.startsWith("55") && phone.length === 12) {
       phone = phone.slice(0, 4) + "9" + phone.slice(4);
@@ -300,7 +308,7 @@ Deno.serve(async (req) => {
       || (isSticker ? "[sticker]" : "")
       || "";
 
-    console.log(`phone="${phone}" | texto="${messageText}" | pushName="${pushName}"`);
+    console.log(`phone="${phone}" | texto="${messageText}" | pushName="${pushName}" | isLid=${isLidContact}`);
 
     if (!phone || !messageText) {
       console.log("Ignorado: sem telefone ou texto. remoteJid:", phoneRaw, "| messageKeys:", Object.keys(message || {}));
@@ -308,6 +316,22 @@ Deno.serve(async (req) => {
     }
 
     console.log(`Mensagem de ${phone} (${pushName}): ${messageText}`);
+
+    // Merge @lid contact when real phone arrives via remoteJidAlt
+    if (remoteJid.includes("@lid") && !isLidContact) {
+      const lidId = remoteJid.replace("@lid", "");
+      if (lidId && lidId !== phone) {
+        const lidContacts = await base44.asServiceRole.entities.Contact.filter({ phone: lidId });
+        if (lidContacts?.length > 0) {
+          console.log(`Merging @lid contact ${lidId} -> real phone ${phone}`);
+          await base44.asServiceRole.entities.Contact.update(lidContacts[0].id, { phone });
+          const oldMsgs = await base44.asServiceRole.entities.Message.filter({ contact_phone: lidId });
+          for (const msg of (oldMsgs || [])) {
+            await base44.asServiceRole.entities.Message.update(msg.id, { contact_phone: phone });
+          }
+        }
+      }
+    }
 
     // Salvar mensagem recebida no histórico
     await base44.asServiceRole.entities.Message.create({
@@ -385,8 +409,8 @@ Deno.serve(async (req) => {
       return Response.json({ status: "ok - silencio", contact_id: contact.id });
     }
 
-    // Enviar resposta
-    await sendWhatsAppMessage(phone, aiResponse);
+    // Enviar resposta - para @lid, usar remoteJid para roteamento correto
+    await sendWhatsAppMessage(phone, aiResponse, isLidContact ? remoteJid : null);
 
     // Salvar resposta da IA no histórico
     await base44.asServiceRole.entities.Message.create({
