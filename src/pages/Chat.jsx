@@ -263,6 +263,14 @@ export default function Chat() {
     return null;
   };
 
+  const extractImage = (msg) => {
+    if (!msg) return null;
+    if (msg.imageMessage?.url) return msg.imageMessage.url;
+    if (msg.image) return msg.image;
+    return null;
+  };
+
+
   const { data: allMessages = [], refetch: refetchMessages } = useQuery({
     queryKey: ["messages", selectedContact?.phone],
     queryFn: async () => {
@@ -666,6 +674,14 @@ export default function Chat() {
                         ? "bg-[#d9fdd3] text-[#111b21] rounded-tr-none"
                         : "bg-white text-[#111b21] rounded-tl-none"
                     }`}>
+                      {(() => {
+                        const imageUrl = extractImage(msg);
+                        return imageUrl ? (
+                          <div className="mb-2 max-w-xs rounded overflow-hidden">
+                            <img src={imageUrl} alt="" className="w-full h-auto" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                          </div>
+                        ) : null;
+                      })()}
                       {audioUrl && (
                         <div className="mb-2">
                           <audio controls className="w-full max-w-xs rounded" style={{height: '32px'}}>
