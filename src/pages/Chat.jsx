@@ -298,8 +298,8 @@ export default function Chat() {
       });
     },
     enabled: !!selectedContact,
-    refetchInterval: 2000,
-    staleTime: 0,
+    refetchInterval: false,
+    staleTime: 30000,
   });
 
   const fetchProfilePic = async (contact) => {
@@ -653,6 +653,19 @@ export default function Chat() {
                                 <button onClick={() => applyTag(selectedContact, tagId)}><X className="w-2.5 h-2.5" /></button>
                               </span>
                             );
+
+  // Deduplicate messages by id and timestamp
+  const uniqueMessages = Object.values(
+    allMessages.reduce((acc, msg) => {
+      const key = msg.id || `${msg.contact_phone}-${msg.timestamp}-${msg.text}`;
+      if (!acc[key]) {
+        acc[key] = msg;
+      }
+      return acc;
+    }, {})
+  );
+
+
                           })}
                         </div>
                       )}
@@ -674,7 +687,7 @@ export default function Chat() {
                   <p className="text-xs mt-1">Envie uma mensagem para começar.</p>
                 </div>
               )}
-              {allMessages.map((msg, i) => {
+              {uniqueMessages.map((msg, i) => {
                 const audioUrl = extractAudio(msg);
                 return (
                   <div key={msg.id || i} className={`flex ${msg.direction === "sent" ? "justify-end" : "justify-start"} group`}>
