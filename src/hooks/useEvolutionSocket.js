@@ -32,12 +32,34 @@ function extractMessage(data) {
   const isGroup = remoteJid.includes("@g.us");
 
   // Suporte ao @lid: tentar todas as alternativas de JID disponíveis
-  const rawJid =
+  // Ordem de prioridade:
+  // 1. remoteJidAlt (número real do WhatsApp)
+  // 2. participant (para grupos)
+  // 3. from (alternativa)
+  // 4. Se for @lid, tentar extrair do remoteJid mesmo
+  // 5. Se não for @lid, usar remoteJid direto
+  let rawJid =
     key.remoteJidAlt ||
     msgData?.participant ||
     msgData?.from ||
+    key.participant ||
     (!remoteJid.includes("@lid") ? remoteJid : null) ||
+    remoteJid ||
     "";
+
+  // Se ainda for @lid, tentar extrair número do linkedJids ou outras fontes
+  if (rawJid.includes("@lid")) {
+    // Tentar extrair do msgData que pode ter mais informações
+    if (msgData?.linkedJids && Array.isArray(msgData.linkedJids)) {
+      const realJid = msgData.linkedJids.find(j => j.endsWith("@s.whatsapp.net"));
+      if (realJid) rawJid = realJid;
+    }
+    // Tentar extrair do chat que pode ter sido enriquecido
+    if (msgData?.chat && msgData.chat.linkedJids && Array.isArray(msgData.chat.linkedJids)) {
+      const realJid = msgData.chat.linkedJids.find(j => j.endsWith("@s.whatsapp.net"));
+      if (realJid) rawJid = realJid;
+    }
+  }
 
   if (!rawJid) {
     console.log("[Socket] @lid sem JID alternativo. key:", JSON.stringify(key), "msgData keys:", Object.keys(msgData || {}));
@@ -57,7 +79,24 @@ function extractMessage(data) {
     data?.body ||
     "";
 
-  return { phone, pushName, text: text || null, timestamp: new Date().toISOString(), fromMe, isGroup };
+  // Extrair foto/imagem da mensagem
+  const imageUrl = message?.imageMessage?.url || msgData?.imageMessage?.url || null;
+
+  // Extrair áudio da mensagem
+  const audioUrl = message?.audioMessage?.url || message?.pttMessage?.url || msgData?.audioMessage?.url || msgData?.pttMessage?.url || null;
+
+  return { 
+    phone, 
+    pushName, 
+    text: text || null, 
+    timestamp: new Date().toISOString(), 
+    fromMe, 
+    isGroup,
+    imageUrl,
+    audioUrl,
+    isFacebookLead: remoteJid.includes("@lid"),
+    message // Passar a mensagem completa também
+  };
 }
 
 export function useEvolutionSocket({ onNewMessage, onConnectionChange }) {
@@ -83,6 +122,10 @@ export function useEvolutionSocket({ onNewMessage, onConnectionChange }) {
       timestamp: msg.timestamp,
       fromMe: msg.fromMe,
       isGroup: msg.isGroup,
+      imageUrl: msg.imageUrl,
+      audioUrl: msg.audioUrl,
+      isFacebookLead: msg.isFacebookLead,
+      message: msg.message,
     })
       .then(() => onNewMessageRef.current?.(msg))
       .catch(err => {
@@ -144,3 +187,4 @@ export function useEvolutionSocket({ onNewMessage, onConnectionChange }) {
     };
   }, [handleMessageData]);
 }
+

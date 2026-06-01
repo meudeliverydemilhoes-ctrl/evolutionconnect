@@ -118,9 +118,9 @@ Deno.serve(async (req) => {
     const body = await req.json();
     console.log("processSocketMessage payload:", JSON.stringify(body));
 
-    let { phone, pushName, text, timestamp, fromMe, isGroup, photo, isFacebookLead } = body;
+    let { phone, pushName, text, timestamp, fromMe, isGroup, photo, isFacebookLead, imageUrl, audioUrl, message } = body;
 
-    console.log("[processSocketMessage] phone:", phone, "pushName:", pushName, "isGroup:", isGroup, "fromMe:", fromMe, "isFacebookLead:", isFacebookLead);
+    console.log("[processSocketMessage] phone:", phone, "pushName:", pushName, "isGroup:", isGroup, "fromMe:", fromMe, "isFacebookLead:", isFacebookLead, "imageUrl:", imageUrl);
 
     if (!phone || !text) {
       return Response.json({ status: "ignored - missing phone or text" });
@@ -157,13 +157,30 @@ Deno.serve(async (req) => {
       return Response.json({ status: "duplicate - already processed" });
     }
 
-    // Salvar mensagem
-    await base44.asServiceRole.entities.Message.create({
+    // Salvar mensagem com imagem/áudio
+    const messageData = {
       contact_phone: phone,
       text,
       direction,
       timestamp: msgTime.toISOString(),
-    });
+    };
+
+    // Adicionar imagem se existir
+    if (imageUrl) {
+      messageData.image = imageUrl;
+    }
+
+    // Adicionar áudio se existir
+    if (audioUrl) {
+      messageData.audio = audioUrl;
+    }
+
+    // Adicionar mensagem completa para referência
+    if (message) {
+      messageData.message = message;
+    }
+
+    await base44.asServiceRole.entities.Message.create(messageData);
 
     // Se for mensagem enviada (fromMe), só salvar — sem IA
     if (fromMe) {
