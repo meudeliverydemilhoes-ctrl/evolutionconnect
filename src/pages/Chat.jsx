@@ -278,7 +278,7 @@ export default function Chat() {
       const msgs = await base44.entities.Message.filter(
         { contact_phone: selectedContact.phone },
         "-created_date",
-        200
+        10000
       );
       if (!msgs) return [];
       return msgs.sort((a, b) => {
