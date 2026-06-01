@@ -258,6 +258,10 @@ export default function Chat() {
 
   const extractAudio = (msg) => {
     if (!msg) return null;
+    // Procurar em msg.message (formato da Evolution API)
+    if (msg.message?.audioMessage?.url) return msg.message.audioMessage.url;
+    if (msg.message?.pttMessage?.url) return msg.message.pttMessage.url;
+    // Procurar direto em msg (formato alternativo)
     if (msg.audioMessage?.url) return msg.audioMessage.url;
     if (msg.pttMessage?.url) return msg.pttMessage.url;
     return null;
@@ -265,8 +269,14 @@ export default function Chat() {
 
   const extractImage = (msg) => {
     if (!msg) return null;
+    // Procurar em msg.message.imageMessage (formato da Evolution API)
+    if (msg.message?.imageMessage?.url) return msg.message.imageMessage.url;
+    // Procurar em msg.imageMessage (formato alternativo)
     if (msg.imageMessage?.url) return msg.imageMessage.url;
+    // Procurar em msg.image (campo direto)
     if (msg.image) return msg.image;
+    // Procurar em msg.message.image
+    if (msg.message?.image) return msg.message.image;
     return null;
   };
 
@@ -665,7 +675,7 @@ export default function Chat() {
                 </div>
               )}
               {allMessages.map((msg, i) => {
-                const audioUrl = extractAudio(msg.message);
+                const audioUrl = extractAudio(msg);
                 return (
                   <div key={msg.id || i} className={`flex ${msg.direction === "sent" ? "justify-end" : "justify-start"} group`}>
                     <div className={`flex items-end gap-1 ${msg.direction === "sent" ? "flex-row-reverse" : "flex-row"}`}>
