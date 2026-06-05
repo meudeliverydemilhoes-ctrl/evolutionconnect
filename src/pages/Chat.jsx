@@ -291,7 +291,14 @@ export default function Chat() {
         10000
       );
       if (!msgs) return [];
-      return msgs.sort((a, b) => {
+      // Deduplicar por id
+      const seen = new Set();
+      const unique = msgs.filter(m => {
+        if (!m.id || seen.has(m.id)) return false;
+        seen.add(m.id);
+        return true;
+      });
+      return unique.sort((a, b) => {
         const ta = new Date(a.timestamp || a.created_date || 0).getTime();
         const tb = new Date(b.timestamp || b.created_date || 0).getTime();
         return ta - tb;
