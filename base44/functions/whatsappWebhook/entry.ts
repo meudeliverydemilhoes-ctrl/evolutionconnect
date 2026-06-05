@@ -137,6 +137,14 @@ Deno.serve(async (req) => {
     console.log("PAYLOAD COMPLETO:", JSON.stringify(body));
     console.log("HEADERS:", JSON.stringify(Object.fromEntries(req.headers.entries())));
 
+    // Verificar se o evento é da instância correta
+    const CONFIGURED_INSTANCE = Deno.env.get("EVOLUTION_INSTANCE");
+    const payloadInstance = body?.instance;
+    if (CONFIGURED_INSTANCE && payloadInstance && payloadInstance !== CONFIGURED_INSTANCE) {
+      console.log(`Ignorado: evento de instância incorreta. Esperado: ${CONFIGURED_INSTANCE}, recebido: ${payloadInstance}`);
+      return Response.json({ status: "ignored - wrong instance" });
+    }
+
     // Suporte a todos os formatos da Evolution API:
     // Formato 1 (webhookByEvents=false): { event: "MESSAGES_UPSERT", data: {...} }
     // Formato 2 (webhookByEvents=true):  { MESSAGES_UPSERT: {...} } ou { messages_upsert: {...} }
