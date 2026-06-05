@@ -1,7 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 async function sendWhatsAppMessage(phone, message) {
-  const url = `${Deno.env.get("EVOLUTION_API_URL")}/message/sendText/${Deno.env.get("EVOLUTION_INSTANCE")}`;
+  const url = `${Deno.env.get("EVOLUTION_API_URL").replace(/\/$/, "")}/message/sendText/${Deno.env.get("EVOLUTION_INSTANCE")}`;
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json", "apikey": Deno.env.get("EVOLUTION_API_KEY") },
