@@ -3,8 +3,8 @@ import { io } from "socket.io-client";
 import { base44 } from "@/api/base44Client";
 
 const EVOLUTION_URL = "https://evolution-api-production-36e1.up.railway.app";
-const EVOLUTION_API_KEY = "049EE924-CB86-4E11-8F80-3F690969C460";
-const INSTANCE = "meudelivery";
+const EVOLUTION_API_KEY = "338be2582c24038a9bbe8714d47e243af4c50ab853a5390317309c8c600af160";
+const INSTANCE = "Talisonrosadelivery";
 
 function normalizePhone(rawJid) {
   if (!rawJid) return null;
