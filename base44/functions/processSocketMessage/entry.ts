@@ -118,9 +118,9 @@ Deno.serve(async (req) => {
     const body = await req.json();
     console.log("processSocketMessage payload:", JSON.stringify(body));
 
-    let { phone, pushName, text, timestamp, fromMe, isGroup, photo, isFacebookLead, imageUrl, audioUrl, message } = body;
+    let { phone, pushName, text, timestamp, fromMe, isGroup, photo, isFacebookLead, imageUrl, audioUrl, message, waMsgId } = body;
 
-    console.log("[processSocketMessage] phone:", phone, "pushName:", pushName, "isGroup:", isGroup, "fromMe:", fromMe, "isFacebookLead:", isFacebookLead, "imageUrl:", imageUrl);
+    console.log("[processSocketMessage] phone:", phone, "pushName:", pushName, "isGroup:", isGroup, "fromMe:", fromMe, "isFacebookLead:", isFacebookLead, "imageUrl:", imageUrl, "waMsgId:", waMsgId);
 
     if (!phone || !text) {
       return Response.json({ status: "ignored - missing phone or text" });
@@ -141,20 +141,28 @@ Deno.serve(async (req) => {
     const direction = fromMe ? "sent" : "received";
     const msgTime = timestamp ? new Date(timestamp) : new Date();
 
-    // Verificar duplicata
-    const recent = await base44.asServiceRole.entities.Message.filter(
-      { contact_phone: phone, direction },
-      "-timestamp",
-      5
-    );
-    const alreadySaved = recent.some(m =>
-      m.text === text &&
-      Math.abs(new Date(m.timestamp) - msgTime) < 15000
-    );
-
-    if (alreadySaved) {
-      console.log("Duplicata detectada, já processado. phone:", phone);
-      return Response.json({ status: "duplicate - already processed" });
+    // Deduplicação por whatsapp_message_id (key.id) — mais confiável
+    if (waMsgId) {
+      const existingById = await base44.asServiceRole.entities.Message.filter({ whatsapp_message_id: waMsgId });
+      if (existingById?.length > 0) {
+        console.log("Duplicata por waMsgId, ignorada:", waMsgId);
+        return Response.json({ status: "duplicate - already processed" });
+      }
+    } else {
+      // Fallback: verificar por texto + timestamp próximo
+      const recent = await base44.asServiceRole.entities.Message.filter(
+        { contact_phone: phone, direction },
+        "-timestamp",
+        5
+      );
+      const alreadySaved = recent.some(m =>
+        m.text === text &&
+        Math.abs(new Date(m.timestamp) - msgTime) < 15000
+      );
+      if (alreadySaved) {
+        console.log("Duplicata detectada (fallback), já processado. phone:", phone);
+        return Response.json({ status: "duplicate - already processed" });
+      }
     }
 
     // Salvar mensagem com imagem/áudio
@@ -178,6 +186,11 @@ Deno.serve(async (req) => {
     // Adicionar mensagem completa para referência
     if (message) {
       messageData.message = message;
+    }
+
+    // Salvar whatsapp_message_id para deduplicação futura
+    if (waMsgId) {
+      messageData.whatsapp_message_id = waMsgId;
     }
 
     await base44.asServiceRole.entities.Message.create(messageData);
@@ -269,4 +282,3 @@ Deno.serve(async (req) => {
     return Response.json({ error: error.message }, { status: 500 });
   }
 });
-

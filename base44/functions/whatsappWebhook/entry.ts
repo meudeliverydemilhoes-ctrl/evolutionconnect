@@ -236,11 +236,19 @@ Deno.serve(async (req) => {
         || message?.imageMessage?.caption
         || data?.body || "";
       if (groupPhone && groupMessageText) {
+        const groupMsgId = key?.id;
+        if (groupMsgId) {
+          const existing = await base44.asServiceRole.entities.Message.filter({ whatsapp_message_id: groupMsgId });
+          if (existing?.length > 0) {
+            return Response.json({ status: "duplicate - group message already saved" });
+          }
+        }
         await base44.asServiceRole.entities.Message.create({
           contact_phone: groupPhone,
           text: groupMessageText,
           direction: "received",
           timestamp: new Date().toISOString(),
+          whatsapp_message_id: groupMsgId || undefined,
         });
         const existing = await base44.asServiceRole.entities.Contact.filter({ phone: groupPhone });
         if (existing?.length > 0) {
@@ -333,12 +341,23 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Deduplicação por whatsapp_message_id (key.id)
+    const waMsgId = key?.id;
+    if (waMsgId) {
+      const existing = await base44.asServiceRole.entities.Message.filter({ whatsapp_message_id: waMsgId });
+      if (existing?.length > 0) {
+        console.log("Mensagem duplicada ignorada. whatsapp_message_id:", waMsgId);
+        return Response.json({ status: "duplicate - already saved" });
+      }
+    }
+
     // Salvar mensagem recebida no histórico
     await base44.asServiceRole.entities.Message.create({
       contact_phone: phone,
       text: messageText,
       direction: "received",
       timestamp: new Date().toISOString(),
+      whatsapp_message_id: waMsgId || undefined,
     });
 
     // Encontrar ou criar contato

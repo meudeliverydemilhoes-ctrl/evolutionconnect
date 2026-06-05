@@ -109,7 +109,12 @@ export function useEvolutionSocket({ onNewMessage, onConnectionChange }) {
     const msg = extractMessage(data);
     if (!msg || !msg.text) return;
 
-    console.log("[Socket] Nova mensagem de", msg.phone, "(fromMe:", msg.fromMe, "):", msg.text);
+    // Extrair key.id para deduplicação
+    const msgData = data?.data || data;
+    const key = msgData?.key || data?.key;
+    const waMsgId = key?.id || null;
+
+    console.log("[Socket] Nova mensagem de", msg.phone, "(fromMe:", msg.fromMe, ") waMsgId:", waMsgId, ":", msg.text);
 
     // Chamar função backend para salvar + IA em background
     // Notificar o Chat ANTES (para UI imediata) e DEPOIS (para mostrar msg salva no DB)
@@ -126,6 +131,7 @@ export function useEvolutionSocket({ onNewMessage, onConnectionChange }) {
       audioUrl: msg.audioUrl,
       isFacebookLead: msg.isFacebookLead,
       message: msg.message,
+      waMsgId,
     })
       .then(() => onNewMessageRef.current?.(msg))
       .catch(err => {
@@ -187,4 +193,3 @@ export function useEvolutionSocket({ onNewMessage, onConnectionChange }) {
     };
   }, [handleMessageData]);
 }
-

@@ -291,11 +291,12 @@ export default function Chat() {
         10000
       );
       if (!msgs) return [];
-      // Deduplicar por id
+      // Deduplicar por whatsapp_message_id (key.id do WhatsApp) quando disponível, fallback para id do banco
       const seen = new Set();
       const unique = msgs.filter(m => {
-        if (!m.id || seen.has(m.id)) return false;
-        seen.add(m.id);
+        const dedupeKey = m.whatsapp_message_id || m.id;
+        if (!dedupeKey || seen.has(dedupeKey)) return false;
+        seen.add(dedupeKey);
         return true;
       });
       return unique.sort((a, b) => {
