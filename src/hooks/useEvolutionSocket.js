@@ -1,10 +1,7 @@
 import { useEffect, useRef, useCallback } from "react";
 import { io } from "socket.io-client";
+import { useState } from "react";
 import { base44 } from "@/api/base44Client";
-
-const EVOLUTION_URL = "https://evolution-api-production-36e1.up.railway.app";
-const EVOLUTION_API_KEY = "338be2582c24038a9bbe8714d47e243af4c50ab853a5390317309c8c600af160";
-const INSTANCE = "Talisonrosadelivery";
 
 function normalizePhone(rawJid) {
   if (!rawJid) return null;
@@ -102,8 +99,17 @@ function extractMessage(data) {
 export function useEvolutionSocket({ onNewMessage, onConnectionChange }) {
   const onNewMessageRef = useRef(onNewMessage);
   const onConnectionChangeRef = useRef(onConnectionChange);
+  const [config, setConfig] = useState(null);
   onNewMessageRef.current = onNewMessage;
   onConnectionChangeRef.current = onConnectionChange;
+
+  useEffect(() => {
+    base44.functions.invoke("getEvolutionConfig", {}).then(res => {
+      if (res?.data?.url && res?.data?.apiKey && res?.data?.instance) {
+        setConfig(res.data);
+      }
+    }).catch(err => console.error("[Socket] Erro ao buscar config:", err));
+  }, []);
 
   const handleMessageData = useCallback(async (data) => {
     const msg = extractMessage(data);
@@ -142,7 +148,10 @@ export function useEvolutionSocket({ onNewMessage, onConnectionChange }) {
   }, []);
 
   useEffect(() => {
-    console.log("[Socket] Conectando à Evolution API...");
+    if (!config) return;
+
+    const { url: EVOLUTION_URL, apiKey: EVOLUTION_API_KEY, instance: INSTANCE } = config;
+    console.log("[Socket] Conectando à Evolution API:", EVOLUTION_URL, "instância:", INSTANCE);
 
     // Cache local para deduplicação no frontend (evita disparar a mesma mensagem múltiplas vezes)
     const processedIds = new Set();
@@ -203,5 +212,5 @@ export function useEvolutionSocket({ onNewMessage, onConnectionChange }) {
       console.log("[Socket] Desconectando...");
       socket.disconnect();
     };
-  }, [handleMessageData]);
+  }, [handleMessageData, config]);
 }
