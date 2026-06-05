@@ -144,6 +144,9 @@ export function useEvolutionSocket({ onNewMessage, onConnectionChange }) {
   useEffect(() => {
     console.log("[Socket] Conectando à Evolution API...");
 
+    // Cache local para deduplicação no frontend (evita disparar a mesma mensagem múltiplas vezes)
+    const processedIds = new Set();
+
     const socket = io(EVOLUTION_URL, {
       transports: ["polling"],
       auth: { apikey: EVOLUTION_API_KEY },
@@ -168,24 +171,33 @@ export function useEvolutionSocket({ onNewMessage, onConnectionChange }) {
       console.warn("[Socket] Erro de conexão:", err.message);
     });
 
-    // Log de TODOS os eventos para debug
-    const originalOnevent = socket.onevent;
-    socket.onevent = function(packet) {
-      console.log("[Socket] EVENTO RAW:", JSON.stringify(packet?.data?.[0]), "| data:", JSON.stringify(packet?.data?.[1])?.substring(0, 300));
-      originalOnevent.call(this, packet);
+    // Handler único com deduplicação local
+    const handleWithDedup = (data) => {
+      const msgData = data?.data || data;
+      const key = msgData?.key || data?.key;
+      const waMsgId = key?.id;
+
+      // Se temos um ID, deduplica localmente antes de chamar o backend
+      if (waMsgId) {
+        if (processedIds.has(waMsgId)) {
+          console.log("[Socket] Duplicata local ignorada:", waMsgId);
+          return;
+        }
+        processedIds.add(waMsgId);
+        // Limpar cache após 60s para não crescer indefinidamente
+        setTimeout(() => processedIds.delete(waMsgId), 60000);
+      }
+
+      handleMessageData(data);
     };
 
-    // Formato com nome da instância como evento
+    // Apenas um listener — o evento da instância já cobre tudo
     socket.on(INSTANCE, (data) => {
       const event = data?.event;
-      console.log("[Socket] Evento da instância:", event);
       if (event === "messages.upsert" || event === "MESSAGES_UPSERT") {
-        handleMessageData(data);
+        handleWithDedup(data);
       }
     });
-
-    socket.on("MESSAGES_UPSERT", handleMessageData);
-    socket.on("messages.upsert", handleMessageData);
 
     return () => {
       console.log("[Socket] Desconectando...");

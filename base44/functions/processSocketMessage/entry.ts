@@ -157,7 +157,7 @@ Deno.serve(async (req) => {
       );
       const alreadySaved = recent.some(m =>
         m.text === text &&
-        Math.abs(new Date(m.timestamp) - msgTime) < 15000
+        Math.abs(new Date(m.timestamp) - msgTime) < 30000
       );
       if (alreadySaved) {
         console.log("Duplicata detectada (fallback), já processado. phone:", phone);
