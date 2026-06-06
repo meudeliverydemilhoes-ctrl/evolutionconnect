@@ -62,5 +62,11 @@
   },
   "required": [
     "phone"
-  ]
+  ],
+  "rls": {
+    "read": {},
+    "create": {},
+    "update": {},
+    "delete": {}
+  }
 }

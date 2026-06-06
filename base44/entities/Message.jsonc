@@ -32,5 +32,11 @@
     "contact_phone",
     "text",
     "direction"
-  ]
+  ],
+  "rls": {
+    "read": {},
+    "create": {},
+    "update": {},
+    "delete": {}
+  }
 }

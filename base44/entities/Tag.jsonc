@@ -39,5 +39,11 @@
   },
   "required": [
     "name"
-  ]
+  ],
+  "rls": {
+    "read": {},
+    "create": {},
+    "update": {},
+    "delete": {}
+  }
 }
