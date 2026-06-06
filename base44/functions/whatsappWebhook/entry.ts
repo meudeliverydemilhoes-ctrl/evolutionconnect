@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 async function sendWhatsAppMessage(phone, message, jidOverride) {
   const EVOLUTION_API_URL = Deno.env.get("EVOLUTION_API_URL").replace(/\/$/, "");
@@ -115,6 +115,22 @@ Responda como a Iza, seguindo todas as regras acima. Resposta curta, direta, nat
   return result.trim();
 }
 
+// Extrai phone normalizado de um remoteJid
+function normalizePhone(rawJid) {
+  if (!rawJid) return null;
+  let phone = rawJid
+    .replace("@s.whatsapp.net", "")
+    .replace("@c.us", "")
+    .replace(/@lid.*$/, "")
+    .replace(/@[a-z.]+$/, "")
+    .replace(/\D/g, "");
+  // Corrigir BR: 55+DDD(2)+número(8) = 12 dígitos → adicionar o 9
+  if (phone.startsWith("55") && phone.length === 12) {
+    phone = phone.slice(0, 4) + "9" + phone.slice(4);
+  }
+  return phone || null;
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -123,84 +139,60 @@ Deno.serve(async (req) => {
       return Response.json({ status: "ok", message: "WhatsApp Webhook ativo" });
     }
 
+    // Ler body bruto para debug
     const bodyText = await req.text();
-    console.log("RAW BODY:", bodyText);
-    
+    console.log("=== WEBHOOK RECEBIDO ===");
+    console.log("METHOD:", req.method);
+    console.log("RAW BODY (primeiros 2000 chars):", bodyText.substring(0, 2000));
+
     let body;
     try {
       body = JSON.parse(bodyText);
-    } catch(e) {
-      console.log("Erro ao parsear JSON:", e.message);
+    } catch (e) {
+      console.log("ERRO ao parsear JSON:", e.message);
       return Response.json({ status: "error parsing body" });
     }
-    
-    console.log("PAYLOAD COMPLETO:", JSON.stringify(body));
-    console.log("HEADERS:", JSON.stringify(Object.fromEntries(req.headers.entries())));
 
-    // Verificar se o evento é da instância correta
-    const CONFIGURED_INSTANCE = Deno.env.get("EVOLUTION_INSTANCE");
-    const payloadInstance = body?.instance;
-    if (CONFIGURED_INSTANCE && payloadInstance && payloadInstance !== CONFIGURED_INSTANCE) {
-      console.log(`Ignorado: evento de instância incorreta. Esperado: ${CONFIGURED_INSTANCE}, recebido: ${payloadInstance}`);
-      return Response.json({ status: "ignored - wrong instance" });
-    }
+    console.log("EVENTO:", body?.event);
+    console.log("INSTÂNCIA NO PAYLOAD:", body?.instance);
 
-    // Suporte a todos os formatos da Evolution API:
-    // Formato 1 (webhookByEvents=false): { event: "MESSAGES_UPSERT", data: {...} }
-    // Formato 2 (webhookByEvents=true):  { MESSAGES_UPSERT: {...} } ou { messages_upsert: {...} }
-    // Formato 3 (legado):                { key: {...}, message: {...} }
+    // --- NORMALIZAR PAYLOAD ---
+    // byEvents=false → { event: "MESSAGES_UPSERT", instance: "...", data: { key: {}, message: {}, ... } }
+    // byEvents=true  → { "MESSAGES_UPSERT": { key: {}, message: {}, ... } }
+    // legado         → { key: {}, message: {}, ... }
     let event = body?.event;
     let data = body?.data;
 
     if (!data) {
-      // Tentar formato webhookByEvents=true
-      const evtData = body?.MESSAGES_UPSERT || body?.messages_upsert || body?.MESSAGE_UPSERT;
-      if (evtData) {
-        event = "MESSAGES_UPSERT";
-        data = evtData;
+      // Tentar formato byEvents=true (chave em maiúsculo)
+      const evtKey = Object.keys(body || {}).find(k =>
+        ["MESSAGES_UPSERT", "SEND_MESSAGE", "messages.upsert", "send.message"].includes(k)
+      );
+      if (evtKey) {
+        event = evtKey;
+        data = body[evtKey];
       } else {
-        // Formato legado: o body inteiro é o data
+        // Formato legado: o próprio body é o data
         data = body;
       }
     }
 
-    const message = data?.message;
-    const key = data?.key;
+    console.log("EVENT normalizado:", event);
+    console.log("DATA keys:", Object.keys(data || {}));
 
-    // Ignorar mensagens enviadas por nós
-    if (key?.fromMe === true) {
-      console.log("Ignorado: mensagem própria");
-      return Response.json({ status: "ignored - own message" });
-    }
-
-    // Ignorar eventos que não são de mensagem (deixar passar os novos eventos de sync)
-    const SYNC_EVENTS = ["CONTACTS_SET", "CONTACTS_UPSERT", "CHATS_SET", "CHATS_UPSERT", "GROUPS_UPSERT"];
+    // --- EVENTOS DE SINCRONIZAÇÃO (não são mensagens) ---
+    const SYNC_EVENTS = ["CONTACTS_SET", "CONTACTS_UPSERT", "CHATS_SET", "CHATS_UPSERT", "GROUPS_UPSERT",
+                         "CONNECTION_UPDATE", "QRCODE_UPDATED", "MESSAGES_DELETE", "MESSAGES_UPDATE",
+                         "PRESENCE_UPDATE", "CALL"];
     if (event && SYNC_EVENTS.includes(event)) {
-      // Processar upsert de grupos via webhook
-      if (event === "GROUPS_UPSERT") {
-        const groups = Array.isArray(data) ? data : [data];
-        for (const grp of groups) {
-          const rawJid = grp?.id || "";
-          if (!rawJid.includes("@g.us")) continue;
-          const phone = rawJid.replace("@g.us", "").replace(/@[a-z.]+$/, "");
-          if (!phone) continue;
-          const name = grp.subject || grp.name || `Grupo ${phone}`;
-          const existing = await base44.asServiceRole.entities.Contact.filter({ phone });
-          if (existing?.length > 0) {
-            if (!existing[0].is_group) await base44.asServiceRole.entities.Contact.update(existing[0].id, { is_group: true, name: existing[0].name || name });
-          } else {
-            await base44.asServiceRole.entities.Contact.create({ phone, name, is_group: true, status: "ativo", tags: [] });
-          }
-        }
-      }
-      // Processar upsert de contatos individuais
+      console.log("Evento de sync, ignorado para mensagens:", event);
+
       if (event === "CONTACTS_UPSERT") {
         const ctList = Array.isArray(data) ? data : [data];
         for (const ct of ctList) {
           const rawJid = ct?.id || "";
           if (!rawJid || rawJid.includes("@g.us")) continue;
-          let phone = rawJid.replace("@s.whatsapp.net", "").replace("@c.us", "").replace(/@[a-z.]+$/, "").replace(/\D/g, "");
-          if (phone.startsWith("55") && phone.length === 12) phone = phone.slice(0, 4) + "9" + phone.slice(4);
+          const phone = normalizePhone(rawJid);
           if (!phone) continue;
           const name = ct.pushName || ct.name || ct.verifiedName || null;
           const existing = await base44.asServiceRole.entities.Contact.filter({ phone });
@@ -211,247 +203,215 @@ Deno.serve(async (req) => {
           }
         }
       }
+
+      if (event === "GROUPS_UPSERT") {
+        const groups = Array.isArray(data) ? data : [data];
+        for (const grp of groups) {
+          const rawJid = grp?.id || "";
+          if (!rawJid.includes("@g.us")) continue;
+          const phone = rawJid.replace("@g.us", "").replace(/\D/g, "");
+          if (!phone) continue;
+          const name = grp.subject || grp.name || `Grupo ${phone}`;
+          const existing = await base44.asServiceRole.entities.Contact.filter({ phone });
+          if (existing?.length > 0) {
+            await base44.asServiceRole.entities.Contact.update(existing[0].id, { is_group: true, name: existing[0].name || name });
+          } else {
+            await base44.asServiceRole.entities.Contact.create({ phone, name, is_group: true, status: "ativo", tags: [] });
+          }
+        }
+      }
+
       return Response.json({ status: "ok - sync event: " + event });
     }
-    if (event && !["messages.upsert", "MESSAGES_UPSERT", "message", "messages.update"].includes(event)) {
-      console.log("Evento ignorado:", event);
+
+    // --- FILTRAR APENAS EVENTOS DE MENSAGEM ---
+    const MESSAGE_EVENTS = [
+      "messages.upsert", "MESSAGES_UPSERT",
+      "send.message", "SEND_MESSAGE",
+      "message", null, undefined
+    ];
+    if (event && !MESSAGE_EVENTS.includes(event)) {
+      console.log("Evento não é de mensagem, ignorado:", event);
       return Response.json({ status: "ignored - event: " + event });
     }
 
-    // Log completo do key para debug do @lid
-    console.log("KEY COMPLETO:", JSON.stringify(key));
-    console.log("DATA COMPLETO:", JSON.stringify(data));
+    // --- EXTRAIR key e message ---
+    // A Evolution API pode mandar data como array ou objeto
+    const dataArr = Array.isArray(data) ? data : [data];
 
-    // Suporte ao novo formato @lid do WhatsApp
-    // Tentar todas as possibilidades de telefone disponíveis no payload
-    const remoteJid = key?.remoteJid || "";
-    let phoneRaw = key?.remoteJidAlt 
-      || data?.remoteJidAlt 
-      || data?.participant
-      || (remoteJid.includes("@lid") ? null : remoteJid)
-      || data?.from 
-      || data?.phoneNumber
-      || "";
+    let processedCount = 0;
 
-    // Grupos: salvar como contato/mensagem mas sem acionar IA
-    const isGroup = remoteJid.includes("@g.us");
-    if (isGroup) {
-      // Normalizar phone do grupo removendo @g.us
-      const groupPhone = remoteJid.replace("@g.us", "").replace(/@[a-z.]+$/, "");
-      const groupPushName = data?.pushName || data?.notifyName || groupPhone;
-      const groupMessageText = message?.conversation
+    for (const item of dataArr) {
+      const key = item?.key || data?.key;
+      const message = item?.message || data?.message;
+      const pushName = item?.pushName || item?.notifyName || data?.pushName || "";
+
+      console.log("Processando item - key:", JSON.stringify(key));
+      console.log("Processando item - message keys:", Object.keys(message || {}));
+
+      if (!key) {
+        console.log("Item sem key, pulando");
+        continue;
+      }
+
+      const remoteJid = key.remoteJid || "";
+      const fromMe = key.fromMe === true;
+      const waMsgId = key.id;
+
+      console.log(`remoteJid="${remoteJid}" | fromMe=${fromMe} | waMsgId="${waMsgId}"`);
+
+      // Grupos: salvar mas sem acionar IA
+      const isGroup = remoteJid.includes("@g.us");
+
+      // Extrair phone
+      let phone;
+      if (isGroup) {
+        phone = remoteJid.replace("@g.us", "").replace(/\D/g, "");
+      } else {
+        // Para @lid, tentar variantes
+        const jidAlt = key.remoteJidAlt || item?.remoteJidAlt || item?.participant;
+        phone = normalizePhone(jidAlt || (!remoteJid.includes("@lid") ? remoteJid : null) || remoteJid);
+      }
+
+      if (!phone) {
+        console.log("Phone não encontrado, pulando item");
+        continue;
+      }
+
+      // Extrair texto
+      const isAudio = !!(message?.audioMessage || message?.pttMessage);
+      const isImage = !!message?.imageMessage;
+      const isVideo = !!message?.videoMessage;
+      const isDocument = !!message?.documentMessage;
+      const isSticker = !!message?.stickerMessage;
+
+      const messageText = message?.conversation
         || message?.extendedTextMessage?.text
         || message?.imageMessage?.caption
-        || data?.body || "";
-      if (groupPhone && groupMessageText) {
-        const groupMsgId = key?.id;
-        if (groupMsgId) {
-          const existing = await base44.asServiceRole.entities.Message.filter({ whatsapp_message_id: groupMsgId });
-          if (existing?.length > 0) {
-            return Response.json({ status: "duplicate - group message already saved" });
-          }
-        }
-        await base44.asServiceRole.entities.Message.create({
-          contact_phone: groupPhone,
-          text: groupMessageText,
-          direction: "received",
-          timestamp: new Date().toISOString(),
-          whatsapp_message_id: groupMsgId || undefined,
-        });
-        const existing = await base44.asServiceRole.entities.Contact.filter({ phone: groupPhone });
+        || message?.videoMessage?.caption
+        || message?.documentMessage?.caption
+        || item?.body
+        || body?.body
+        || (isAudio ? "[áudio]" : "")
+        || (isImage ? "[imagem]" : "")
+        || (isVideo ? "[vídeo]" : "")
+        || (isDocument ? "[documento]" : "")
+        || (isSticker ? "[sticker]" : "")
+        || "";
+
+      console.log(`phone="${phone}" | fromMe=${fromMe} | texto="${messageText}" | pushName="${pushName}"`);
+
+      if (!messageText) {
+        console.log("Sem texto extraído, pulando. message keys:", Object.keys(message || {}));
+        continue;
+      }
+
+      const direction = fromMe ? "sent" : "received";
+
+      // Deduplicação por waMsgId
+      if (waMsgId) {
+        const existing = await base44.asServiceRole.entities.Message.filter({ whatsapp_message_id: waMsgId });
         if (existing?.length > 0) {
-          await base44.asServiceRole.entities.Contact.update(existing[0].id, {
-            last_message: groupMessageText,
-            last_message_time: new Date().toISOString(),
-            last_contact_date: new Date().toISOString(),
-            is_group: true,
-          });
-        } else {
-          await base44.asServiceRole.entities.Contact.create({
-            phone: groupPhone,
-            name: groupPushName,
-            last_message: groupMessageText,
-            last_message_time: new Date().toISOString(),
-            last_contact_date: new Date().toISOString(),
-            status: "ativo",
-            tags: [],
-            is_group: true,
-          });
+          console.log("Duplicata por waMsgId ignorada:", waMsgId);
+          continue;
         }
       }
-      return Response.json({ status: "ok - group saved" });
-    }
 
-    // FIX: Handle @lid contacts without remoteJidAlt (first CTWA ad message)
-    let isLidContact = false;
-    if (!phoneRaw) {
-      if (remoteJid.includes("@lid")) {
-        phoneRaw = remoteJid;
-        isLidContact = true;
-        console.log("@lid sem alternativa - processando com lid JID:", remoteJid);
+      // Salvar mensagem
+      const saved = await base44.asServiceRole.entities.Message.create({
+        contact_phone: phone,
+        text: messageText,
+        direction,
+        timestamp: new Date().toISOString(),
+        whatsapp_message_id: waMsgId || undefined,
+      });
+      console.log("✅ Message criada! id:", saved?.id, "phone:", phone, "direction:", direction, "texto:", messageText);
+      processedCount++;
+
+      // Upsert contato
+      const contacts = await base44.asServiceRole.entities.Contact.filter({ phone });
+      let contact;
+      const contactUpdate = {
+        last_message: messageText,
+        last_message_time: new Date().toISOString(),
+        last_contact_date: new Date().toISOString(),
+        is_group: isGroup || undefined,
+      };
+
+      if (contacts?.length > 0) {
+        contact = contacts[0];
+        if (!contact.name && pushName) contactUpdate.name = pushName;
+        await base44.asServiceRole.entities.Contact.update(contact.id, contactUpdate);
       } else {
-        console.log("ATENÇÃO sem phone - data completo:", JSON.stringify(data), "key:", JSON.stringify(key));
-        return Response.json({ status: "ignored - sem phone" });
-      }
-    }
+        contact = await base44.asServiceRole.entities.Contact.create({
+          phone,
+          name: pushName || phone,
+          ...contactUpdate,
+          status: "ativo",
+          tags: [],
+        });
+        console.log("Novo contato criado:", contact.id);
 
-    // phoneRaw pode ser ex: 555199667558@s.whatsapp.net (faltando dígito 9)
-    // Corrigir número BR: 55 + DDD(2) + 9 + número(8) = 13 dígitos total
-    let phone = phoneRaw.replace("@s.whatsapp.net", "").replace("@c.us", "").replace("@lid", "").replace(/\D/g, "");
-    // Se número BR (começa com 55) e tem 12 dígitos (sem o 9), inserir o 9
-    if (phone.startsWith("55") && phone.length === 12) {
-      phone = phone.slice(0, 4) + "9" + phone.slice(4);
-    }
-    const pushName = data?.pushName || data?.notifyName || "";
-    // Detectar tipo de mídia
-    const isAudio = !!(message?.audioMessage || message?.pttMessage);
-    const isImage = !!message?.imageMessage;
-    const isVideo = !!message?.videoMessage;
-    const isDocument = !!message?.documentMessage;
-    const isSticker = !!message?.stickerMessage;
-
-    const messageText = message?.conversation
-      || message?.extendedTextMessage?.text
-      || message?.imageMessage?.caption
-      || message?.videoMessage?.caption
-      || message?.documentMessage?.caption
-      || data?.body
-      || body?.body
-      || (isAudio ? "[áudio]" : "")
-      || (isImage ? "[imagem]" : "")
-      || (isVideo ? "[vídeo]" : "")
-      || (isDocument ? "[documento]" : "")
-      || (isSticker ? "[sticker]" : "")
-      || "";
-
-    console.log(`phone="${phone}" | texto="${messageText}" | pushName="${pushName}" | isLid=${isLidContact}`);
-
-    if (!phone || !messageText) {
-      console.log("Ignorado: sem telefone ou texto. remoteJid:", phoneRaw, "| messageKeys:", Object.keys(message || {}));
-      return Response.json({ status: "ignored - no content" });
-    }
-
-    console.log(`Mensagem de ${phone} (${pushName}): ${messageText}`);
-
-    // Merge @lid contact when real phone arrives via remoteJidAlt
-    if (remoteJid.includes("@lid") && !isLidContact) {
-      const lidId = remoteJid.replace("@lid", "");
-      if (lidId && lidId !== phone) {
-        const lidContacts = await base44.asServiceRole.entities.Contact.filter({ phone: lidId });
-        if (lidContacts?.length > 0) {
-          console.log(`Merging @lid contact ${lidId} -> real phone ${phone}`);
-          await base44.asServiceRole.entities.Contact.update(lidContacts[0].id, { phone });
-          const oldMsgs = await base44.asServiceRole.entities.Message.filter({ contact_phone: lidId });
-          for (const msg of (oldMsgs || [])) {
-            await base44.asServiceRole.entities.Message.update(msg.id, { contact_phone: phone });
+        // Auto-tagging apenas para novos contatos recebidos
+        if (!fromMe && !isGroup) {
+          const allTags = await base44.asServiceRole.entities.Tag.list();
+          const autoTags = allTags.filter(t =>
+            t.auto_apply ||
+            (t.trigger_keyword && messageText.toLowerCase().includes(t.trigger_keyword.toLowerCase()))
+          );
+          if (autoTags.length > 0) {
+            const tagIds = autoTags.map(t => t.id);
+            await base44.asServiceRole.entities.Contact.update(contact.id, { tags: tagIds });
+            const tagWithStage = autoTags.find(t => t.pipeline_stage);
+            if (tagWithStage) {
+              const existingPipeline = await base44.asServiceRole.entities.PipelineContact.filter({ contact_phone: phone });
+              if (!existingPipeline?.length) {
+                await base44.asServiceRole.entities.PipelineContact.create({
+                  contact_phone: phone,
+                  contact_name: pushName,
+                  stage: tagWithStage.pipeline_stage,
+                });
+              }
+            }
           }
         }
       }
-    }
 
-    // Deduplicação por whatsapp_message_id (key.id)
-    const waMsgId = key?.id;
-    if (waMsgId) {
-      const existing = await base44.asServiceRole.entities.Message.filter({ whatsapp_message_id: waMsgId });
-      if (existing?.length > 0) {
-        console.log("Mensagem duplicada ignorada. whatsapp_message_id:", waMsgId);
-        return Response.json({ status: "duplicate - already saved" });
-      }
-    }
+      // Resposta da IA apenas para mensagens recebidas (não grupos, não próprias)
+      if (!fromMe && !isGroup) {
+        const chatbotConfigs = await base44.asServiceRole.entities.ChatbotConfig.list();
+        const chatbotActive = chatbotConfigs?.[0]?.active === true;
 
-    // Salvar mensagem recebida no histórico
-    await base44.asServiceRole.entities.Message.create({
-      contact_phone: phone,
-      text: messageText,
-      direction: "received",
-      timestamp: new Date().toISOString(),
-      whatsapp_message_id: waMsgId || undefined,
-    });
-
-    // Encontrar ou criar contato
-    const contacts = await base44.asServiceRole.entities.Contact.filter({ phone });
-    let contact;
-
-    if (contacts && contacts.length > 0) {
-      contact = contacts[0];
-      await base44.asServiceRole.entities.Contact.update(contact.id, {
-        last_message: messageText,
-        last_message_time: new Date().toISOString(),
-        last_contact_date: new Date().toISOString(),
-        name: contact.name || pushName,
-      });
-    } else {
-      contact = await base44.asServiceRole.entities.Contact.create({
-        phone,
-        name: pushName,
-        last_message: messageText,
-        last_message_time: new Date().toISOString(),
-        last_contact_date: new Date().toISOString(),
-        status: "ativo",
-        tags: [],
-      });
-      console.log("Novo contato criado:", contact.id);
-
-      // Auto-tagging: busca tags com auto_apply=true ou trigger_keyword
-      const allTags = await base44.asServiceRole.entities.Tag.list();
-      const autoTags = allTags.filter(t =>
-        t.auto_apply ||
-        (t.trigger_keyword && messageText.toLowerCase().includes(t.trigger_keyword.toLowerCase()))
-      );
-
-      if (autoTags.length > 0) {
-        const tagIds = autoTags.map(t => t.id);
-        await base44.asServiceRole.entities.Contact.update(contact.id, { tags: tagIds });
-        contact.tags = tagIds;
-
-        // Move para pipeline conforme a primeira tag com pipeline_stage
-        const tagWithStage = autoTags.find(t => t.pipeline_stage);
-        if (tagWithStage) {
-          const existing = await base44.asServiceRole.entities.PipelineContact.filter({ contact_phone: phone });
-          if (!existing || existing.length === 0) {
-            await base44.asServiceRole.entities.PipelineContact.create({
+        if (chatbotActive) {
+          const messageHistory = await base44.asServiceRole.entities.Message.filter(
+            { contact_phone: phone },
+            "timestamp",
+            20
+          );
+          const aiResponse = await getAIResponse(base44.asServiceRole, messageText, contact.name || pushName, messageHistory);
+          if (aiResponse) {
+            await sendWhatsAppMessage(phone, aiResponse);
+            await base44.asServiceRole.entities.Message.create({
               contact_phone: phone,
-              contact_name: pushName,
-              stage: tagWithStage.pipeline_stage,
+              text: aiResponse,
+              direction: "sent",
+              timestamp: new Date().toISOString(),
             });
-            console.log(`Contato ${phone} movido para pipeline: ${tagWithStage.pipeline_stage}`);
+            console.log(`Iza respondeu para ${phone}: ${aiResponse}`);
+          } else {
+            console.log(`Iza optou por silêncio para ${phone}`);
           }
+        } else {
+          console.log("Chatbot inativo, sem resposta IA para", phone);
         }
-        console.log(`Auto-tags aplicadas a ${phone}:`, tagIds);
       }
     }
 
-    // Buscar histórico recente de mensagens para contexto
-    const messageHistory = await base44.asServiceRole.entities.Message.filter(
-      { contact_phone: phone },
-      "timestamp",
-      20
-    );
+    console.log(`=== FIM: ${processedCount} mensagem(ns) processada(s) ===`);
+    return Response.json({ status: "ok", processed: processedCount });
 
-    // Gerar resposta de IA
-    const aiResponse = await getAIResponse(base44.asServiceRole, messageText, contact.name || pushName, messageHistory);
-
-    if (!aiResponse) {
-      console.log(`Iza optou por silêncio para ${phone}`);
-      return Response.json({ status: "ok - silencio", contact_id: contact.id });
-    }
-
-    // Enviar resposta - para @lid, usar remoteJid para roteamento correto
-    await sendWhatsAppMessage(phone, aiResponse, isLidContact ? remoteJid : null);
-
-    // Salvar resposta da IA no histórico
-    await base44.asServiceRole.entities.Message.create({
-      contact_phone: phone,
-      text: aiResponse,
-      direction: "sent",
-      timestamp: new Date().toISOString(),
-    });
-
-    console.log(`Iza respondeu para ${phone}: ${aiResponse}`);
-
-    return Response.json({ status: "ok", contact_id: contact.id });
   } catch (error) {
-    console.error("Erro no webhook:", error);
+    console.error("ERRO no webhook:", error.message, error.stack);
     return Response.json({ error: error.message }, { status: 500 });
   }
 });
