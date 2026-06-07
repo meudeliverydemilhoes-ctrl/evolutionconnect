@@ -10,8 +10,7 @@ Deno.serve(async (req) => {
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const appId = Deno.env.get("BASE44_APP_ID");
-    const webhookUrl = `https://api.base44.com/api/apps/${appId}/functions/whatsappWebhook`;
+    const webhookUrl = `https://abstract-chat-sync-pro.base44.app/functions/whatsappWebhook`;
 
     // Configurar webhook via API da Evolution (apenas eventos válidos)
     const res = await fetch(`${EVOLUTION_API_URL}/webhook/set/${EVOLUTION_INSTANCE}`, {
