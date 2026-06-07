@@ -4,28 +4,21 @@ async function sendWhatsAppMessage(phone, message, jidOverride) {
   const EVOLUTION_API_URL = Deno.env.get("EVOLUTION_API_URL").replace(/\/$/, "");
   const EVOLUTION_API_KEY = Deno.env.get("EVOLUTION_API_KEY");
   const EVOLUTION_INSTANCE = Deno.env.get("EVOLUTION_INSTANCE");
-
   const url = `${EVOLUTION_API_URL}/message/sendText/${EVOLUTION_INSTANCE}`;
   const res = await fetch(url, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "apikey": EVOLUTION_API_KEY,
-    },
-    body: JSON.stringify({
-      number: jidOverride || phone,
-      text: message,
-    }),
+    headers: { "Content-Type": "application/json", "apikey": EVOLUTION_API_KEY },
+    body: JSON.stringify({ number: jidOverride || phone, text: message }),
   });
   return res.json();
 }
 
-async function getAIResponse(base44ServiceRole, userMessage, contactName, messageHistory) {
+async function getAIResponse(sr, userMessage, contactName, messageHistory) {
   const historyText = messageHistory.map(m =>
     `${m.direction === "received" ? "Lead" : "Iza"}: ${m.text}`
   ).join("\n");
 
-  const result = await base44ServiceRole.integrations.Core.InvokeLLM({
+  const result = await sr.integrations.Core.InvokeLLM({
     prompt: `Você é a IZA, do time comercial do Talison Rosa, mentor da Mentoria Delivery Pro.
 
 SOBRE O TALISON ROSA:
@@ -107,7 +100,7 @@ NOME DO LEAD (se já souber): ${contactName || "ainda não informado"}
 
 NOVA MENSAGEM DO LEAD: "${userMessage}"
 
-Responda como a Iza, seguindo todas as regras acima. Resposta curta, direta, natural. Se não há nada a responder (já respondeu recentemente e lead não enviou nada novo), retorne exatamente: [SILENCIO]`,
+Responda como a Iza, seguindo todas as regras acima. Resposta curta, direta, natural. Se não há nada a responder, retorne exatamente: [SILENCIO]`,
     model: "claude_sonnet_4_6",
   });
 
@@ -116,70 +109,68 @@ Responda como a Iza, seguindo todas as regras acima. Resposta curta, direta, nat
 }
 
 Deno.serve(async (req) => {
+  // Sempre responder 200 para GET (health check da Evolution)
+  if (req.method === "GET") {
+    return Response.json({ status: "ok", message: "WhatsApp Webhook ativo" });
+  }
+
+  // Criar cliente SEMPRE com asServiceRole — sem auth de usuário (webhook público)
+  const base44 = createClientFromRequest(req);
+  const sr = base44.asServiceRole;
+
+  let bodyText = "";
   try {
-    const base44 = createClientFromRequest(req);
+    bodyText = await req.text();
+  } catch(e) {
+    return Response.json({ status: "error reading body" });
+  }
 
-    if (req.method === "GET") {
-      return Response.json({ status: "ok", message: "WhatsApp Webhook ativo - Talisonrosadelivery" });
-    }
+  console.log("=== WEBHOOK RECEBIDO ===");
+  console.log("RAW BODY:", bodyText.substring(0, 1000));
 
-    // Ler body bruto para debug
-    const bodyText = await req.text();
-    console.log("=== WEBHOOK RECEBIDO ===");
-    console.log("METHOD:", req.method);
-    console.log("RAW BODY (primeiros 2000 chars):", bodyText.substring(0, 2000));
+  // Ignorar ping/keepalive
+  if (bodyText === '{"ping":true}' || bodyText.includes('"ping":true')) {
+    return Response.json({ status: "ok - ping" });
+  }
 
-    let body;
-    try {
-      body = JSON.parse(bodyText);
-    } catch(e) {
-      console.log("ERRO ao parsear JSON:", e.message);
-      return Response.json({ status: "error parsing body" });
-    }
+  let body;
+  try {
+    body = JSON.parse(bodyText);
+  } catch(e) {
+    console.log("ERRO parse JSON:", e.message);
+    return Response.json({ status: "error parsing body" });
+  }
 
-    console.log("EVENT:", body?.event);
-    console.log("INSTANCE:", body?.instance);
-    console.log("DATA KEYS:", Object.keys(body?.data || body || {}));
+  // Normalizar evento e data
+  let event = (body?.event || "").toUpperCase();
+  let data = body?.data;
 
-    // Extrair evento e data — suporte a byEvents=false e byEvents=true
-    // byEvents=false: { event: "MESSAGES_UPSERT", instance: "...", data: { key: {...}, message: {...} } }
-    // byEvents=true:  { MESSAGES_UPSERT: { key: {...}, message: {...} } }
-    // legado:         { key: {...}, message: {...} }
-    let event = body?.event;
-    let data = body?.data;
-
-    if (!event && !data) {
-      // Tentar formato byEvents=true
-      const evtKey = Object.keys(body || {}).find(k =>
-        k.toUpperCase().includes("MESSAGES") || k.toUpperCase().includes("MESSAGE")
-      );
-      if (evtKey) {
-        event = evtKey.toUpperCase();
-        data = body[evtKey];
-        console.log("Detectado formato byEvents=true, evento:", event);
-      } else {
-        // Formato legado: body inteiro é o data
-        data = body;
-        event = "MESSAGES_UPSERT";
-        console.log("Formato legado detectado");
-      }
-    }
-
-    if (!data && body?.key) {
-      // Body direto tem key — é o data
+  // Formato byEvents=true: { MESSAGES_UPSERT: {...} }
+  if (!event && !data) {
+    const evtKey = Object.keys(body || {}).find(k =>
+      k.toUpperCase().includes("MESSAGE")
+    );
+    if (evtKey) {
+      event = evtKey.toUpperCase();
+      data = body[evtKey];
+    } else {
       data = body;
-      event = event || "MESSAGES_UPSERT";
+      event = "MESSAGES_UPSERT";
     }
+  }
 
-    console.log("EVENT NORMALIZADO:", event);
-    console.log("DATA:", JSON.stringify(data)?.substring(0, 500));
+  if (!data && body?.key) {
+    data = body;
+    event = event || "MESSAGES_UPSERT";
+  }
 
-    // Processar eventos de sync (contatos, grupos)
-    const SYNC_EVENTS = ["CONTACTS_SET", "CONTACTS_UPSERT", "CHATS_SET", "CHATS_UPSERT", "GROUPS_UPSERT"];
-    const eventUpper = (event || "").toUpperCase();
+  console.log("EVENT:", event, "| DATA keys:", Object.keys(data || {}).join(","));
 
-    if (SYNC_EVENTS.includes(eventUpper)) {
-      if (eventUpper === "GROUPS_UPSERT") {
+  // Eventos de sincronização — tratar e sair
+  const SYNC_EVENTS = ["CONTACTS_SET", "CONTACTS_UPSERT", "CHATS_SET", "CHATS_UPSERT", "GROUPS_UPSERT"];
+  if (SYNC_EVENTS.includes(event)) {
+    try {
+      if (event === "GROUPS_UPSERT") {
         const groups = Array.isArray(data) ? data : [data];
         for (const grp of groups) {
           const rawJid = grp?.id || "";
@@ -187,15 +178,15 @@ Deno.serve(async (req) => {
           const phone = rawJid.replace("@g.us", "").replace(/@[a-z.]+$/, "");
           if (!phone) continue;
           const name = grp.subject || grp.name || `Grupo ${phone}`;
-          const existing = await base44.asServiceRole.entities.Contact.filter({ phone });
+          const existing = await sr.entities.Contact.filter({ phone });
           if (existing?.length > 0) {
-            if (!existing[0].is_group) await base44.asServiceRole.entities.Contact.update(existing[0].id, { is_group: true, name: existing[0].name || name });
+            if (!existing[0].is_group) await sr.entities.Contact.update(existing[0].id, { is_group: true, name: existing[0].name || name });
           } else {
-            await base44.asServiceRole.entities.Contact.create({ phone, name, is_group: true, status: "ativo", tags: [] });
+            await sr.entities.Contact.create({ phone, name, is_group: true, status: "ativo", tags: [] });
           }
         }
       }
-      if (eventUpper === "CONTACTS_UPSERT") {
+      if (event === "CONTACTS_UPSERT") {
         const ctList = Array.isArray(data) ? data : [data];
         for (const ct of ctList) {
           const rawJid = ct?.id || "";
@@ -204,246 +195,214 @@ Deno.serve(async (req) => {
           if (phone.startsWith("55") && phone.length === 12) phone = phone.slice(0, 4) + "9" + phone.slice(4);
           if (!phone) continue;
           const name = ct.pushName || ct.name || ct.verifiedName || null;
-          const existing = await base44.asServiceRole.entities.Contact.filter({ phone });
+          const existing = await sr.entities.Contact.filter({ phone });
           if (!existing?.length && name) {
-            await base44.asServiceRole.entities.Contact.create({ phone, name, status: "ativo", tags: [] });
+            await sr.entities.Contact.create({ phone, name, status: "ativo", tags: [] });
           } else if (existing?.length && !existing[0].name && name) {
-            await base44.asServiceRole.entities.Contact.update(existing[0].id, { name });
+            await sr.entities.Contact.update(existing[0].id, { name });
           }
         }
       }
-      return Response.json({ status: "ok - sync event: " + event });
+    } catch(e) {
+      console.log("Erro sync event:", e.message);
     }
+    return Response.json({ status: "ok - sync: " + event });
+  }
 
-    // Aceitar apenas eventos de mensagem
-    const MSG_EVENTS = ["MESSAGES_UPSERT", "MESSAGES.UPSERT", "MESSAGE", "SEND.MESSAGE", "MESSAGES_UPDATE"];
-    if (event && !MSG_EVENTS.includes(eventUpper)) {
-      console.log("Evento ignorado (não é de mensagem):", event);
-      return Response.json({ status: "ignored - event: " + event });
-    }
+  // Aceitar apenas eventos de mensagem
+  const MSG_EVENTS = ["MESSAGES_UPSERT", "MESSAGES.UPSERT", "MESSAGE", "SEND.MESSAGE", "MESSAGES_UPDATE", "SEND_MESSAGE"];
+  if (event && !MSG_EVENTS.includes(event)) {
+    console.log("Evento ignorado:", event);
+    return Response.json({ status: "ignored - event: " + event });
+  }
 
-    // Extrair key e message do data
-    // data pode ser objeto único ou array
-    const msgItem = Array.isArray(data) ? data[0] : data;
-    const key = msgItem?.key || {};
-    const message = msgItem?.message || {};
-    const pushName = msgItem?.pushName || msgItem?.notifyName || "";
+  // Extrair item de mensagem (pode ser array)
+  const msgItem = Array.isArray(data) ? data[0] : data;
+  if (!msgItem) {
+    return Response.json({ status: "ignored - no message item" });
+  }
 
-    console.log("KEY:", JSON.stringify(key));
-    console.log("MESSAGE KEYS:", Object.keys(message));
-    console.log("PUSH NAME:", pushName);
+  const key = msgItem?.key || {};
+  const message = msgItem?.message || {};
+  const pushName = msgItem?.pushName || msgItem?.notifyName || "";
 
-    // Ignorar mensagens enviadas por nós (fromMe = true)
-    if (key?.fromMe === true) {
-      console.log("Ignorado: mensagem própria (fromMe=true)");
-      return Response.json({ status: "ignored - own message" });
-    }
+  console.log("KEY:", JSON.stringify(key));
+  console.log("MESSAGE KEYS:", Object.keys(message));
+  console.log("PUSH NAME:", pushName);
 
-    const remoteJid = key?.remoteJid || "";
-    console.log("REMOTE JID:", remoteJid);
+  // Ignorar próprias mensagens (fromMe)
+  if (key?.fromMe === true) {
+    console.log("Ignorado: fromMe=true");
+    return Response.json({ status: "ignored - own message" });
+  }
 
-    // Grupos: salvar mas sem acionar IA
-    const isGroup = remoteJid.includes("@g.us");
-    if (isGroup) {
-      const groupPhone = remoteJid.replace("@g.us", "").replace(/@[a-z.]+$/, "");
-      const groupPushName = pushName || groupPhone;
-      const groupMessageText = message?.conversation
-        || message?.extendedTextMessage?.text
-        || message?.imageMessage?.caption
-        || msgItem?.body || "";
+  const remoteJid = key?.remoteJid || "";
+  console.log("REMOTE JID:", remoteJid);
 
-      if (groupPhone && groupMessageText) {
+  // === GRUPOS ===
+  if (remoteJid.includes("@g.us")) {
+    const groupPhone = remoteJid.replace("@g.us", "").replace(/@[a-z.]+$/, "");
+    const groupText = message?.conversation || message?.extendedTextMessage?.text || msgItem?.body || "";
+    if (groupPhone && groupText) {
+      try {
         const groupMsgId = key?.id;
         if (groupMsgId) {
-          const dup = await base44.asServiceRole.entities.Message.filter({ whatsapp_message_id: groupMsgId });
+          const dup = await sr.entities.Message.filter({ whatsapp_message_id: groupMsgId });
           if (dup?.length > 0) return Response.json({ status: "duplicate - group" });
         }
-        await base44.asServiceRole.entities.Message.create({
-          contact_phone: groupPhone,
-          text: groupMessageText,
-          direction: "received",
-          timestamp: new Date().toISOString(),
-          whatsapp_message_id: groupMsgId || undefined,
+        await sr.entities.Message.create({
+          contact_phone: groupPhone, text: groupText, direction: "received",
+          timestamp: new Date().toISOString(), whatsapp_message_id: groupMsgId || undefined,
         });
-        const existingGrp = await base44.asServiceRole.entities.Contact.filter({ phone: groupPhone });
+        const existingGrp = await sr.entities.Contact.filter({ phone: groupPhone });
         if (existingGrp?.length > 0) {
-          await base44.asServiceRole.entities.Contact.update(existingGrp[0].id, {
-            last_message: groupMessageText, last_message_time: new Date().toISOString(),
+          await sr.entities.Contact.update(existingGrp[0].id, {
+            last_message: groupText, last_message_time: new Date().toISOString(),
             last_contact_date: new Date().toISOString(), is_group: true,
           });
         } else {
-          await base44.asServiceRole.entities.Contact.create({
-            phone: groupPhone, name: groupPushName,
-            last_message: groupMessageText, last_message_time: new Date().toISOString(),
+          await sr.entities.Contact.create({
+            phone: groupPhone, name: pushName || groupPhone,
+            last_message: groupText, last_message_time: new Date().toISOString(),
             last_contact_date: new Date().toISOString(), status: "ativo", tags: [], is_group: true,
           });
         }
-      }
-      return Response.json({ status: "ok - group saved" });
+      } catch(e) { console.log("Erro grupo:", e.message); }
     }
+    return Response.json({ status: "ok - group" });
+  }
 
-    // Extrair phone do remoteJid
-    // Suporte a @lid (contatos via anúncios do Facebook)
-    let phoneRaw = (!remoteJid.includes("@lid") ? remoteJid : null)
-      || key?.remoteJidAlt
-      || msgItem?.participant
-      || msgItem?.from
-      || "";
+  // === CONTATO INDIVIDUAL ===
+  let isLidContact = remoteJid.includes("@lid");
+  let phoneRaw = !isLidContact ? remoteJid : (msgItem?.participant || msgItem?.from || "");
 
-    let isLidContact = false;
-    if (!phoneRaw && remoteJid.includes("@lid")) {
-      phoneRaw = remoteJid;
-      isLidContact = true;
-      console.log("@lid sem alternativa:", remoteJid);
-    }
+  if (!phoneRaw) {
+    console.log("IGNORADO: sem phone. remoteJid:", remoteJid);
+    return Response.json({ status: "ignored - no phone" });
+  }
 
-    if (!phoneRaw) {
-      console.log("IGNORADO: sem phoneRaw. remoteJid:", remoteJid, "key:", JSON.stringify(key));
-      return Response.json({ status: "ignored - no phone" });
-    }
+  let phone = phoneRaw
+    .replace("@s.whatsapp.net", "").replace("@c.us", "")
+    .replace(/@lid.*$/, "").replace(/\D/g, "");
 
-    let phone = phoneRaw
-      .replace("@s.whatsapp.net", "")
-      .replace("@c.us", "")
-      .replace(/@lid.*$/, "")
-      .replace(/\D/g, "");
+  // Corrigir BR: 55 + DDD(2) + número(8) = 12 dígitos → adicionar o 9
+  if (phone.startsWith("55") && phone.length === 12) {
+    phone = phone.slice(0, 4) + "9" + phone.slice(4);
+  }
 
-    // Corrigir número BR sem o dígito 9
-    if (phone.startsWith("55") && phone.length === 12) {
-      phone = phone.slice(0, 4) + "9" + phone.slice(4);
-    }
+  console.log("PHONE:", phone);
 
-    console.log("PHONE NORMALIZADO:", phone);
+  // Extrair texto
+  const isAudio = !!(message?.audioMessage || message?.pttMessage);
+  const messageText = message?.conversation
+    || message?.extendedTextMessage?.text
+    || message?.imageMessage?.caption
+    || message?.videoMessage?.caption
+    || message?.documentMessage?.caption
+    || msgItem?.body || body?.body
+    || (isAudio ? "[áudio]" : "")
+    || (message?.imageMessage ? "[imagem]" : "")
+    || (message?.videoMessage ? "[vídeo]" : "")
+    || (message?.documentMessage ? "[documento]" : "")
+    || (message?.stickerMessage ? "[sticker]" : "")
+    || "";
 
-    // Extrair texto da mensagem
-    const isAudio = !!(message?.audioMessage || message?.pttMessage);
-    const isImage = !!message?.imageMessage;
-    const isVideo = !!message?.videoMessage;
-    const isDocument = !!message?.documentMessage;
-    const isSticker = !!message?.stickerMessage;
+  console.log("TEXTO:", messageText, "| PHONE:", phone);
 
-    const messageText = message?.conversation
-      || message?.extendedTextMessage?.text
-      || message?.imageMessage?.caption
-      || message?.videoMessage?.caption
-      || message?.documentMessage?.caption
-      || msgItem?.body
-      || body?.body
-      || (isAudio ? "[áudio]" : "")
-      || (isImage ? "[imagem]" : "")
-      || (isVideo ? "[vídeo]" : "")
-      || (isDocument ? "[documento]" : "")
-      || (isSticker ? "[sticker]" : "")
-      || "";
+  if (!phone || !messageText) {
+    console.log("IGNORADO: phone ou texto vazio");
+    return Response.json({ status: "ignored - no phone or text" });
+  }
 
-    console.log(`PHONE="${phone}" | TEXTO="${messageText}" | PUSH="${pushName}"`);
-
-    if (!phone || !messageText) {
-      console.log("IGNORADO: phone ou texto vazio. message keys:", Object.keys(message));
-      return Response.json({ status: "ignored - no phone or text" });
-    }
-
-    // Deduplicação por whatsapp_message_id
-    const waMsgId = key?.id;
+  // === SALVAR MENSAGEM (núcleo — isolado em try/catch próprio) ===
+  const waMsgId = key?.id;
+  try {
     if (waMsgId) {
-      const dup = await base44.asServiceRole.entities.Message.filter({ whatsapp_message_id: waMsgId });
+      const dup = await sr.entities.Message.filter({ whatsapp_message_id: waMsgId });
       if (dup?.length > 0) {
-        console.log("DUPLICADA - já existe. waMsgId:", waMsgId);
-        return Response.json({ status: "duplicate - already saved" });
+        console.log("DUPLICADA:", waMsgId);
+        return Response.json({ status: "duplicate" });
       }
     }
 
-    // === SALVAR MENSAGEM RECEBIDA ===
-    const savedMsg = await base44.asServiceRole.entities.Message.create({
+    const savedMsg = await sr.entities.Message.create({
       contact_phone: phone,
       text: messageText,
-      direction: key?.fromMe ? "sent" : "received",
+      direction: "received",
       timestamp: new Date().toISOString(),
       whatsapp_message_id: waMsgId || undefined,
     });
-    console.log("MENSAGEM SALVA! ID:", savedMsg?.id, "phone:", phone, "texto:", messageText);
+    console.log("MENSAGEM SALVA! ID:", savedMsg?.id);
 
-    // Encontrar ou criar contato
-    const contacts = await base44.asServiceRole.entities.Contact.filter({ phone });
+    // Atualizar/criar contato
     let contact;
+    try {
+      const contacts = await sr.entities.Contact.filter({ phone });
+      if (contacts?.length > 0) {
+        contact = contacts[0];
+        await sr.entities.Contact.update(contact.id, {
+          last_message: messageText,
+          last_message_time: new Date().toISOString(),
+          last_contact_date: new Date().toISOString(),
+          name: contact.name || pushName || phone,
+        });
+      } else {
+        contact = await sr.entities.Contact.create({
+          phone, name: pushName || phone,
+          last_message: messageText,
+          last_message_time: new Date().toISOString(),
+          last_contact_date: new Date().toISOString(),
+          status: "ativo", tags: [],
+        });
+        console.log("NOVO CONTATO:", contact.id);
 
-    if (contacts && contacts.length > 0) {
-      contact = contacts[0];
-      await base44.asServiceRole.entities.Contact.update(contact.id, {
-        last_message: messageText,
-        last_message_time: new Date().toISOString(),
-        last_contact_date: new Date().toISOString(),
-        name: contact.name || pushName,
-      });
-    } else {
-      contact = await base44.asServiceRole.entities.Contact.create({
-        phone,
-        name: pushName,
-        last_message: messageText,
-        last_message_time: new Date().toISOString(),
-        last_contact_date: new Date().toISOString(),
-        status: "ativo",
-        tags: [],
-      });
-      console.log("NOVO CONTATO CRIADO:", contact.id);
-
-      // Auto-tagging
-      const allTags = await base44.asServiceRole.entities.Tag.list();
-      const autoTags = allTags.filter(t =>
-        t.auto_apply ||
-        (t.trigger_keyword && messageText.toLowerCase().includes(t.trigger_keyword.toLowerCase()))
-      );
-      if (autoTags.length > 0) {
-        const tagIds = autoTags.map(t => t.id);
-        await base44.asServiceRole.entities.Contact.update(contact.id, { tags: tagIds });
-        contact.tags = tagIds;
-        const tagWithStage = autoTags.find(t => t.pipeline_stage);
-        if (tagWithStage) {
-          const existingPipe = await base44.asServiceRole.entities.PipelineContact.filter({ contact_phone: phone });
-          if (!existingPipe || existingPipe.length === 0) {
-            await base44.asServiceRole.entities.PipelineContact.create({
-              contact_phone: phone, contact_name: pushName, stage: tagWithStage.pipeline_stage,
-            });
+        // Auto-tagging — em try separado para não quebrar o fluxo
+        try {
+          const allTags = await sr.entities.Tag.list();
+          const autoTags = allTags.filter(t =>
+            t.auto_apply || (t.trigger_keyword && messageText.toLowerCase().includes(t.trigger_keyword.toLowerCase()))
+          );
+          if (autoTags.length > 0) {
+            const tagIds = autoTags.map(t => t.id);
+            await sr.entities.Contact.update(contact.id, { tags: tagIds });
+            const tagWithStage = autoTags.find(t => t.pipeline_stage);
+            if (tagWithStage) {
+              const existingPipe = await sr.entities.PipelineContact.filter({ contact_phone: phone });
+              if (!existingPipe?.length) {
+                await sr.entities.PipelineContact.create({ contact_phone: phone, contact_name: pushName, stage: tagWithStage.pipeline_stage });
+              }
+            }
           }
-        }
+        } catch(e) { console.log("Erro auto-tag:", e.message); }
       }
-    }
+    } catch(e) { console.log("Erro contato:", e.message); }
 
-    // Verificar chatbot ativo
-    const chatbotConfigs = await base44.asServiceRole.entities.ChatbotConfig.list();
-    const chatbotActive = chatbotConfigs?.[0]?.active === true;
+    // Chatbot — em try separado para não quebrar o fluxo
+    try {
+      const chatbotConfigs = await sr.entities.ChatbotConfig.list();
+      const chatbotActive = chatbotConfigs?.[0]?.active === true;
 
-    if (!chatbotActive) {
-      console.log("Chatbot inativo, mensagem salva sem IA para", phone);
-      return Response.json({ status: "ok - chatbot off", contact_id: contact.id });
-    }
+      if (chatbotActive && contact) {
+        const messageHistory = await sr.entities.Message.filter({ contact_phone: phone }, "timestamp", 20);
+        const aiResponse = await getAIResponse(sr, messageText, contact?.name || pushName, messageHistory);
+        if (aiResponse) {
+          await sendWhatsAppMessage(phone, aiResponse, isLidContact ? remoteJid : null);
+          await sr.entities.Message.create({
+            contact_phone: phone, text: aiResponse, direction: "sent", timestamp: new Date().toISOString(),
+          });
+          console.log("Iza respondeu para", phone);
+        } else {
+          console.log("Iza silenciou para", phone);
+        }
+      } else {
+        console.log("Chatbot inativo para", phone);
+      }
+    } catch(e) { console.log("Erro chatbot:", e.message); }
 
-    // Buscar histórico e gerar resposta da IA
-    const messageHistory = await base44.asServiceRole.entities.Message.filter(
-      { contact_phone: phone }, "timestamp", 20
-    );
+    return Response.json({ status: "ok", message_id: savedMsg?.id });
 
-    const aiResponse = await getAIResponse(base44.asServiceRole, messageText, contact.name || pushName, messageHistory);
-
-    if (!aiResponse) {
-      console.log("Iza optou por silêncio para", phone);
-      return Response.json({ status: "ok - silencio", contact_id: contact.id });
-    }
-
-    await sendWhatsAppMessage(phone, aiResponse, isLidContact ? remoteJid : null);
-
-    await base44.asServiceRole.entities.Message.create({
-      contact_phone: phone,
-      text: aiResponse,
-      direction: "sent",
-      timestamp: new Date().toISOString(),
-    });
-
-    console.log("Iza respondeu para", phone, ":", aiResponse);
-    return Response.json({ status: "ok", contact_id: contact.id, message_saved: savedMsg?.id });
-
-  } catch (error) {
-    console.error("ERRO NO WEBHOOK:", error.message, error.stack);
-    return Response.json({ error: error.message }, { status: 500 });
+  } catch(e) {
+    console.log("ERRO AO SALVAR MENSAGEM:", e.message);
+    return Response.json({ error: e.message }, { status: 500 });
   }
 });
